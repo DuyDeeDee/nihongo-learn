@@ -1,0 +1,248 @@
+"use client";
+
+import Link from "next/link";
+import {useEffect, useRef, useState} from "react";
+import {AuthPanel} from "@/components/auth-panel";
+import {FlashcardSession} from "@/components/flashcard-session";
+import {checkAnswer, type AnswerMode} from "@/lib/answer";
+import {hasSupabaseConfig, supabase} from "@/lib/supabase-client";
+import type {LiveCard, LiveSession, StudySnapshot} from "@/lib/study-types";
+
+type QueueEntry = {card: LiveCard; retry: boolean};
+type Step = "prompt" | "meaning" | "recall" | "result" | "done";
+type GradeResult = {correct: boolean; rating: string; dueAt: string};
+
+function initialQueue(session: LiveSession): QueueEntry[] {
+  return [
+    ...session.cards.filter(card => !card.graded).map(card => ({card, retry: false})),
+    ...session.cards.filter(card => card.graded && !card.correct && !card.retryCompleted)
+      .map(card => ({card, retry: true})),
+  ];
+}
+
+async function readResponse<T>(response: Response): Promise<T> {
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error ?? "Yêu cầu không thành công.");
+  return data as T;
+}
+
+export function FlashcardExperience({lessonKey, demo = false}: {lessonKey?: string; demo?: boolean}) {
+  const authVersion = useRef(0);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [authReady, setAuthReady] = useState(!hasSupabaseConfig);
+  useEffect(() => {
+    const client = supabase;
+    if (!client) return;
+    let active = true;
+    const version = authVersion.current;
+    void client.auth.getUser().then(({data, error}) => {
+      if (active && authVersion.current === version) {setUserId(error ? null : (data.user?.id ?? null)); setAuthReady(true);}
+    });
+    const {data: {subscription}} = client.auth.onAuthStateChange((event, session) => {
+      if (active) {if (event !== "INITIAL_SESSION") authVersion.current += 1; setUserId(session?.user?.id ?? null); setAuthReady(true);}
+    });
+    return () => {active = false; subscription.unsubscribe();};
+  }, []);
+
+  if (demo || !hasSupabaseConfig) return <FlashcardSession/>;
+  if (!authReady) return <p className="muted">Đang kiểm tra đăng nhập…</p>;
+  if (!userId) return <div className="stack"><h1 className="page-title">Flashcard</h1><p className="muted">Đăng nhập để học và lưu lịch ôn từ từ vựng của bạn.</p><AuthPanel/><Link className="btn secondary" href="/flashcards?demo=1">Thử phiên demo</Link></div>;
+  return <LiveFlashcards key={`${userId}:${lessonKey ?? "all"}`} lessonKey={lessonKey}/>;
+}
+
+function LiveFlashcards({lessonKey}: {lessonKey?: string}) {
+  const [snapshot, setSnapshot] = useState<StudySnapshot | null>(null);
+  const [session, setSession] = useState<LiveSession | null>(null);
+  const [queue, setQueue] = useState<QueueEntry[]>([]);
+  const [index, setIndex] = useState(0);
+  const [step, setStep] = useState<Step>("prompt");
+  const [mode, setMode] = useState<AnswerMode>("flexible");
+  const [answer, setAnswer] = useState("");
+  const [correct, setCorrect] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [note, setNote] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [recallStartedAt, setRecallStartedAt] = useState(0);
+  const [elapsedMs, setElapsedMs] = useState(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    async function load() {
+      try {
+        const query = lessonKey ? `?lessonKey=${encodeURIComponent(lessonKey)}` : "";
+        const [response, preferencesResponse] = await Promise.all([
+          fetch(`/api/study${query}`, {signal: controller.signal, cache: "no-store"}),
+          fetch("/api/preferences", {signal: controller.signal, cache: "no-store"}),
+        ]);
+        const result = await readResponse<StudySnapshot>(response);
+        if (controller.signal.aborted) return;
+        setSnapshot(result);
+        if (result.session) {
+          setSession(result.session);
+          setQueue(initialQueue(result.session));
+          setMode(result.session.mode);
+        } else if (preferencesResponse.ok) {
+          const preferences = await preferencesResponse.json() as {answerMode?: AnswerMode};
+          if (!controller.signal.aborted && (preferences.answerMode === "kana" || preferences.answerMode === "kanji" || preferences.answerMode === "flexible")) {
+            setMode(preferences.answerMode);
+          }
+        }
+      } catch (cause) {
+        if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Không tải được phiên học.");
+      }
+    }
+    void load();
+    return () => controller.abort();
+  }, [lessonKey]);
+
+  function resetCard() {
+    setStep("prompt");
+    setAnswer("");
+    setCorrect(false);
+    setSaved(false);
+    setNote("");
+    setError("");
+  }
+
+  async function start() {
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch("/api/study", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({lessonKey, mode}),
+      });
+      const result = await readResponse<StudySnapshot>(response);
+      setSnapshot(result);
+      if (result.session) {
+        setSession(result.session);
+        setQueue(initialQueue(result.session));
+        setIndex(0);
+        setMode(result.session.mode);
+        resetCard();
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Không bắt đầu được phiên học.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function finish() {
+    if (!supabase || !session || busy) return;
+    setBusy(true);
+    setError("");
+    const {error: finishError} = await supabase.rpc("finish_flashcard_session", {p_session_id: session.id});
+    if (finishError) setError(finishError.message);
+    else setStep("done");
+    setBusy(false);
+  }
+
+  function advance() {
+    if (index + 1 >= queue.length) {void finish(); return;}
+    setIndex(current => current + 1);
+    resetCard();
+  }
+
+  function reveal() {setStep("meaning");}
+  function hide() {setStep("recall"); setAnswer(""); setRecallStartedAt(Date.now());}
+
+  async function submit() {
+    const entry = queue[index];
+    if (!entry || !session || !answer.trim() || busy) return;
+    const elapsed = Math.min(Math.max(Date.now() - recallStartedAt, 0), 86_400_000);
+    setElapsedMs(elapsed);
+    setBusy(true);
+    setError("");
+    try {
+      if (entry.retry) {
+        const response = await fetch("/api/study/retry", {
+          method: "POST", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({sessionCardId: entry.card.sessionCardId, answer}),
+        });
+        const result = await readResponse<{correct: boolean}>(response);
+        setCorrect(result.correct);
+        setSaved(true);
+        setNote(result.correct ? "Đúng ở lượt luyện lại. Lịch ôn không bị tính thêm." : "Chưa đúng. Hãy gõ lại từ này.");
+      } else {
+        const ok = checkAnswer(answer, entry.card.acceptedAnswers, session.mode);
+        setCorrect(ok);
+        if (ok) {
+          setSaved(false);
+          setNote("Đúng rồi. Chọn mức độ nhớ để lưu lịch ôn.");
+        } else {
+          const response = await fetch("/api/study/grade", {
+            method: "POST", headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({sessionCardId: entry.card.sessionCardId, answer, rating: "again", elapsedMs: elapsed}),
+          });
+          const result = await readResponse<GradeResult>(response);
+          setSaved(true);
+          setNote(`Đã lưu Again · ôn tiếp ${new Date(result.dueAt).toLocaleString("vi-VN")}.`);
+        }
+      }
+      setStep("result");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Không lưu được kết quả.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function rate(rating: "hard" | "good" | "easy") {
+    const entry = queue[index];
+    if (!entry || busy || saved) return;
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch("/api/study/grade", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({sessionCardId: entry.card.sessionCardId, answer, rating, elapsedMs}),
+      });
+      const result = await readResponse<GradeResult>(response);
+      setSaved(true);
+      setNote(`Đã lưu ${result.rating.toUpperCase()} · ôn tiếp ${new Date(result.dueAt).toLocaleString("vi-VN")}.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Không lưu được lịch ôn.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const entry = queue[index];
+  if (!snapshot && !error) return <p className="muted">Đang tải Flashcard…</p>;
+  if (snapshot && !snapshot.gradingReady) return <div className="card stack"><h1 className="page-title">Flashcard cá nhân</h1><p>Máy chủ chưa có <code>SUPABASE_SERVICE_ROLE_KEY</code> để chấm an toàn.</p><Link href="/flashcards?demo=1" className="btn secondary">Học thử bản demo</Link></div>;
+  if (!session) return <div className="stack">
+    <div><div className="eyebrow">ÔN TẬP CÁ NHÂN</div><h1 className="page-title">Flashcard đến hạn</h1></div>
+    {error && <p role="alert" style={{color:"#a34434"}}>{error}</p>}
+    {snapshot?.gradingReady && snapshot.dueCount === 0 && <div className="card stack"><p className="muted">Chưa có thẻ đến hạn{lessonKey ? " trong bài này" : ""}. Hãy thêm từ vựng hoặc quay lại khi thẻ đến hạn.</p><Link href="/lessons" className="btn secondary">Mở bài học</Link></div>}
+    {snapshot?.gradingReady && snapshot.dueCount > 0 && <div className="card stack">
+      <p>{snapshot.dueCount} thẻ đến hạn{lessonKey ? " trong bài này" : ""}. Mỗi phiên học tối đa 20 thẻ.</p>
+      <label className="stack">Chế độ trả lời<select className="input" value={mode} onChange={event=>setMode(event.target.value as AnswerMode)}><option value="flexible">Flexible</option><option value="kana">Kana</option><option value="kanji">Kanji</option></select></label>
+      <button className="btn" disabled={busy} onClick={()=>void start()}>{busy ? "Đang bắt đầu…" : "Bắt đầu ôn"}</button>
+    </div>}
+  </div>;
+  if (step === "done") return <div className="card flashcard"><h1 className="page-title">Hoàn thành phiên học</h1><p className="muted">Kết quả đã được lưu vào Supabase.</p><Link className="btn" href="/dashboard">Về tổng quan</Link></div>;
+  if (!entry) return <div className="card stack"><h1 className="page-title">Các thẻ đã hoàn tất</h1><p className="muted">Xác nhận kết thúc phiên học.</p>{error && <p role="alert">{error}</p>}<button className="btn" disabled={busy} onClick={()=>void finish()}>Hoàn tất phiên</button></div>;
+
+  const card = entry.card;
+  const percent = Math.round(index / queue.length * 100);
+  return <div className="stack">
+    <div className="lesson"><div><div className="eyebrow">{entry.retry ? "LUYỆN LẠI" : "FLASHCARD CÁ NHÂN"}</div><h1 className="page-title">Luyện nhớ chủ động</h1></div><Link className="tag" href="/dashboard">Rời phiên</Link></div>
+    <div className="lesson"><span className="muted">Thẻ {index + 1} / {queue.length}</span><span className="muted">{session.mode.toUpperCase()} · Nhật → nghĩa → gõ lại</span></div>
+    <div className="progress"><i style={{width: `${percent}%`}}/></div>
+    <article className="card flashcard" aria-live="polite">
+      {step === "prompt" && <><div className="eyebrow">TỪ TIẾNG NHẬT</div><div className="jp" lang="ja" style={{fontSize:48}}>{card.japanese}</div>{card.kana && <div className="jp muted" lang="ja">{card.kana}</div>}<p className="muted">Đọc từ trước khi xem nghĩa.</p><button className="btn" onClick={reveal}>Hiện nghĩa</button></>}
+      {step === "meaning" && <><div className="eyebrow">NGHĨA TIẾNG VIỆT</div><div style={{fontSize:30,fontWeight:700}}>{card.meaning}</div><button className="btn" onClick={hide}>Ẩn từ Nhật và kiểm tra</button></>}
+      {step === "recall" && <><div className="eyebrow">GÕ LẠI TỪ TIẾNG NHẬT</div><p className="muted">Dùng Japanese IME. Từ gốc đã được ẩn.</p><form onSubmit={event=>{event.preventDefault();void submit()}} style={{width:"100%"}}><label htmlFor="live-recall" className="eyebrow">ĐÁP ÁN CỦA BẠN</label><input id="live-recall" className="input jp" lang="ja" autoComplete="off" autoCapitalize="off" value={answer} onChange={event=>setAnswer(event.target.value)} onKeyDown={event=>{if(event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault()}}/><button className="btn" style={{width:"100%",marginTop:12}} disabled={busy || !answer.trim()}>{busy ? "Đang kiểm tra…" : "Kiểm tra đáp án"}</button></form></>}
+      {step === "result" && <><span className="tag">{correct ? "CHÍNH XÁC" : "CHƯA ĐÚNG"}</span><div className="jp" lang="ja" style={{fontSize:38}}>{card.japanese}</div>{card.kana && <span className="jp muted" lang="ja">{card.kana}</span>}<div style={{fontSize:22}}>{card.meaning}</div><p className="muted" role="status">{note}</p>
+        {correct && !entry.retry && !saved && <div style={{display:"flex",gap:8,flexWrap:"wrap"}}><button className="btn secondary" disabled={busy} onClick={()=>void rate("hard")}>Hard</button><button className="btn green" disabled={busy} onClick={()=>void rate("good")}>Good</button><button className="btn" disabled={busy} onClick={()=>void rate("easy")}>Easy</button></div>}
+        {!correct && !entry.retry && saved && <button className="btn" onClick={()=>{setQueue(current=>[...current,{card,retry:true}]);setIndex(current=>current+1);resetCard()}}>Again · luyện lại cuối phiên</button>}
+        {!correct && entry.retry && <button className="btn" onClick={()=>{setStep("recall");setAnswer("");setRecallStartedAt(Date.now())}}>Gõ lại lần nữa</button>}
+        {correct && saved && <button className="btn green" disabled={busy} onClick={advance}>Tiếp tục</button>}
+      </>}
+    </article>
+    {error && <p role="alert" style={{color:"#a34434"}}>{error}</p>}
+    <p className="muted" style={{textAlign:"center",fontSize:13}}>Phiên này được lưu vào tài khoản Supabase của bạn.</p>
+  </div>;
+}

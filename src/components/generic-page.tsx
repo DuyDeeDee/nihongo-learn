@@ -1,16 +1,43 @@
 "use client";
-import Link from "next/link";import {useMemo,useState} from "react";import {lessons,routeNames} from "@/lib/data";import {FlashcardSession} from "@/components/flashcard-session";import {AuthPanel} from "@/components/auth-panel";import {ParticlePractice,QuizPractice,SentenceBuilder} from "@/components/practice";
-export function GenericPage({slug}:{slug:string[]}){const path=slug.join("/");const [volume,setVolume]=useState("all");const [filter,setFilter]=useState("all");const selected=lessons.find(l=>l.id===slug.at(-1));const title=selected?`Bài ${selected.number}`:routeNames[slug.at(-1)??""]??"Nihongo Quest";
-const visible=useMemo(()=>lessons.filter(l=>(volume==="all"||String(l.volume)===volume)&&(filter==="all"||l.status===filter)),[volume,filter]);
-if(path==="flashcards"||path==="review")return <FlashcardSession/>;
-if(path==="quiz")return <div className="stack"><h1 className="page-title">Kiểm tra nhanh</h1><QuizPractice/></div>;
-if(path==="games/sentence-builder")return <div className="stack"><h1 className="page-title">Sentence Builder</h1><SentenceBuilder/></div>;
-if(path==="games/particle-master")return <div className="stack"><h1 className="page-title">Particle Master</h1><ParticlePractice/></div>;
-if(path==="lessons")return <div className="stack"><div><div className="eyebrow">LỘ TRÌNH CỦA BẠN</div><h1 className="page-title">50 bài học</h1><p className="muted">Chọn đúng edition và volume trong bộ sách bạn đang sử dụng.</p></div><div className="card grid grid-2"><label className="muted">Volume<select className="input" value={volume} onChange={e=>setVolume(e.target.value)}><option value="all">Tất cả volume</option><option value="1">Volume I · Bài 1–25</option><option value="2">Volume II · Bài 26–50</option></select></label><label className="muted">Trạng thái<select className="input" value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">Tất cả</option><option>Chưa học</option><option>Đang học</option><option>Hoàn thành</option></select></label></div><div className="grid grid-3">{visible.map(l=><Link className="card stack" key={l.id} href={`/lessons/${l.id}`}><div className="lesson"><span className="tag">Volume {l.volume}</span><span className="muted">{l.status}</span></div><div><h2 className="section-title">Bài {l.number}</h2><span className="muted">Chưa thêm học liệu cá nhân</span></div><span className="muted">Mở bài →</span></Link>)}</div></div>;
-if(selected){return <div className="stack"><Link className="muted" href="/lessons">← Tất cả bài học</Link><div><div className="eyebrow">EDITION 2 · VOLUME {selected.volume}</div><h1 className="page-title">Bài {selected.number}</h1><p className="muted">Thêm học liệu từ tài liệu bạn có quyền sử dụng để bắt đầu.</p></div><section className="grid grid-2"><Link className="card stack" href={`/lessons/${selected.id}/vocabulary`}><span className="tag">01</span><h2 className="section-title">Từ vựng</h2><p className="muted">Chưa có mục từ. Bạn có thể tự thêm từ của mình.</p><strong>Mở từ vựng →</strong></Link><Link className="card stack" href={`/lessons/${selected.id}/grammar`}><span className="tag">02</span><h2 className="section-title">Ngữ pháp</h2><p className="muted">Chưa có ghi chú ngữ pháp cho bài này.</p><strong>Mở ngữ pháp →</strong></Link></section><div className="grid grid-3"><Link className="btn" href="/flashcards">Flashcard</Link><Link className="btn secondary" href="/quiz">Quiz</Link><Link className="btn secondary" href="/games/sentence-builder">Sentence Builder</Link></div></div>}
-if(path.endsWith("vocabulary"))return <div className="stack"><Link href={`/lessons/${slug[1]}`} className="muted">← Quay lại bài học</Link><h1 className="page-title">Từ vựng</h1><div className="card"><p className="muted">Chưa có từ vựng. Hãy nhập nội dung từ nguồn bạn có quyền sử dụng.</p><button className="btn" onClick={()=>alert("Thêm từ vựng sẽ khả dụng sau khi kết nối Supabase.")}>＋ Thêm từ của bạn</button></div></div>;
-if(path.endsWith("grammar"))return <div className="stack"><Link href={`/lessons/${slug[1]}`} className="muted">← Quay lại bài học</Link><h1 className="page-title">Ngữ pháp</h1><div className="card"><p className="muted">Chưa có ghi chú ngữ pháp. Bạn có thể tự lưu mẫu câu và giải thích.</p><button className="btn" onClick={()=>alert("Thêm ghi chú sẽ khả dụng sau khi kết nối Supabase.")}>＋ Thêm ghi chú</button></div></div>;
-if(path==="settings")return <div className="stack"><div><div className="eyebrow">CÁ NHÂN HÓA</div><h1 className="page-title">Cài đặt</h1><p className="muted">Quản lý tài khoản và thói quen học tập.</p></div><AuthPanel/><section className="card stack"><div className="eyebrow">MỤC TIÊU HỌC</div><label className="muted">Mỗi ngày<select className="input"><option>20 phút</option><option>10 phút</option><option>30 phút</option></select></label><label className="muted">Chế độ nhập mặc định<select className="input"><option>Flexible</option><option>Kana</option><option>Kanji</option></select></label><p className="muted">Bản demo chỉ minh họa các lựa chọn; lưu cài đặt cần kết nối Supabase.</p></section></div>;
-if(path==="setup")return <div className="stack" style={{maxWidth:720,margin:"auto"}}><div className="eyebrow">BƯỚC 1 / 3</div><h1 className="page-title">Chuẩn bị góc học tập</h1><div className="card stack"><label>Edition<select className="input"><option>Minna no Nihongo · Edition 2</option></select></label><label>Volume<select className="input"><option>Volume I · Bài 1–25</option><option>Volume II · Bài 26–50</option></select></label><label>Mục tiêu mỗi ngày<select className="input"><option>20 phút</option><option>10 phút</option><option>30 phút</option></select></label><Link className="btn" href="/dashboard">Bắt đầu học →</Link></div></div>;
-const descriptions:Record<string,string>={"quiz":"Luyện tập bằng câu hỏi tự biên. Chưa có quiz cá nhân cho bài này.","games/sentence-builder":"Sắp xếp các mảnh câu do bạn tự tạo. Học liệu sẽ xuất hiện sau khi bạn thêm nội dung.","games/particle-master":"Luyện chọn trợ từ từ câu tự biên của bạn.","review/mistakes":"Các thẻ bạn nhập sai sẽ xuất hiện ở đây sau khi kết nối và lưu phiên học.","progress":"Tiến độ mock của phiên này chỉ tồn tại đến khi tải lại trang.","settings":"Quản lý mục tiêu, chế độ nhập và kết nối Supabase cá nhân."};
-return <div className="stack"><div><div className="eyebrow">NIHONGO QUEST</div><h1 className="page-title">{title}</h1><p className="muted">{descriptions[path]??"Không gian học tập của bạn."}</p></div><section className="grid grid-2"><Link className="card stack" href="/lessons"><span className="tag">LỘ TRÌNH</span><h2 className="section-title">Khám phá bài học</h2><span className="muted">50 bài, tách theo volume</span><strong>Mở danh sách →</strong></Link><Link className="card stack" href="/flashcards"><span className="tag">ÔN TẬP</span><h2 className="section-title">Bắt đầu flashcard</h2><span className="muted">Gõ lại từ với Japanese IME</span><strong>Vào phiên học →</strong></Link></section></div>}
+
+import Link from "next/link";
+import {FlashcardExperience} from "@/components/flashcard-experience";
+import {GamePage} from "@/components/game-page";
+import {GrammarPage} from "@/components/grammar-page";
+import {LessonDirectory, LessonOverview} from "@/components/lesson-pages";
+import {PreferencesPage} from "@/components/preferences-page";
+import {ProgressExperience} from "@/components/progress-experience";
+import {QuizPage} from "@/components/quiz-page";
+import {VocabularyPage} from "@/components/vocabulary-page";
+import {lessons, routeNames} from "@/lib/data";
+
+export function GenericPage({slug, studyLessonKey, studyDemo}: {
+  slug: string[]; studyLessonKey?: string; studyDemo?: boolean;
+}) {
+  const path = slug.join("/");
+  if (path === "flashcards" || path === "review") {
+    return <FlashcardExperience lessonKey={studyLessonKey} demo={studyDemo}/>;
+  }
+  if (path === "review/mistakes") return <ProgressExperience view="mistakes"/>;
+  if (path === "progress") return <ProgressExperience view="progress"/>;
+  if (path === "quiz") return <QuizPage lessonKey={studyLessonKey} demo={studyDemo}/>;
+  if (path === "games/sentence-builder") {
+    return <GamePage kind="ordering" lessonKey={studyLessonKey} demo={studyDemo}/>;
+  }
+  if (path === "games/particle-master") {
+    return <GamePage kind="particle" lessonKey={studyLessonKey} demo={studyDemo}/>;
+  }
+  if (path === "settings" || path === "setup") return <PreferencesPage view={path}/>;
+  if (path === "lessons") return <LessonDirectory/>;
+
+  if (slug[0] === "lessons") {
+    const lesson = lessons.find(entry => entry.id === slug[1]);
+    if (!lesson) return <div className="stack"><Link href="/lessons" className="muted">← Tất cả bài học</Link><h1 className="page-title">Không tìm thấy bài học</h1></div>;
+    if (slug.length === 2) return <LessonOverview lesson={lesson}/>;
+    if (slug.length === 3 && slug[2] === "vocabulary") return <VocabularyPage key={lesson.id} lesson={lesson}/>;
+    if (slug.length === 3 && slug[2] === "grammar") return <GrammarPage key={lesson.id} lesson={lesson}/>;
+  }
+
+  const title = routeNames[slug.at(-1) ?? ""] ?? "Nihongo Quest";
+  return <div className="stack"><h1 className="page-title">{title}</h1><p className="muted">Không tìm thấy trang này.</p><Link className="btn secondary" href="/lessons">Mở danh sách bài học</Link></div>;
+}

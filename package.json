@@ -9,7 +9,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/study.test.mjs",
+    "test:live": "node --env-file=.env.local tests/live-study-smoke.mjs",
+    "test:api": "node --env-file=.env.local tests/live-api-smoke.mjs"
   },
   "keywords": [],
   "author": "",
@@ -33,6 +36,7 @@
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.4.3",
     "postcss": "^8.5.31",
+    "supabase": "^2.122.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3"
   }
