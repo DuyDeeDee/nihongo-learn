@@ -206,3 +206,11 @@ Các giai đoạn 1–5 đã có luồng hoạt động trên Supabase: 50 bài 
 Kiểm chứng đã thực hiện: typecheck, ESLint, unit tests, production build, smoke API bằng tài khoản tạm, RLS với hai tài khoản và kiểm tra các route qua HTTP. Các tài khoản và dữ liệu thử được dọn sau kiểm tra. Tệp `.env.local` không nằm trong Git.
 
 **Việc còn lại trước khi xác nhận MVP hoàn tất:** kiểm tra trực quan và thao tác bàn phím/trình đọc màn hình trên trình duyệt desktop/mobile; thử toàn bộ migration trên database mới; kết nối repository với một dịch vụ triển khai (ví dụ Vercel), cấu hình biến môi trường/domain/Auth redirect rồi kiểm tra một lần push tạo bản deploy mới. Chức năng nhập lại JSON và sao lưu nội dung Storage chưa có trong ứng dụng; tài liệu vận hành nêu cách dùng công cụ backup của Supabase và giới hạn của bản xuất JSON. Ảnh/âm thanh cá nhân hiện chưa gắn vào thẻ học.
+
+## 14. Cập nhật QA ngày 25/10/2026
+
+Đã kiểm tra 14 route ở desktop 1280×800 và điện thoại 390×844: 28/28 lượt mở trang đạt, không thấy tràn ngang, lỗi JavaScript hay vùng chạm dưới 44 px trong các phần tử được đo. Tám kịch bản tương tác bằng bàn phím ở chế độ demo đạt, gồm skip link, bật/tắt âm thanh, hai nhánh Flashcard, Quiz, hai game và kiểm tra hiển thị furigana/cổng đăng nhập của AI. Ảnh chụp và báo cáo JSON được lưu trong thư mục scratch của tác vụ QA `NQ-QA-02`.
+
+Sau QA đã đồng bộ trạng thái âm thanh giữa các màn, đặt tiêu đề riêng cho từng route để hỗ trợ thông báo điều hướng, và cho hiệu ứng giấy màu tôn trọng thiết lập giảm chuyển động. TypeScript, ESLint, 5 unit test và production build đều đạt sau các sửa đổi; đã kiểm tra tiêu đề HTML thực tế trên Dashboard, Lessons, Vocabulary và Sentence Builder.
+
+**Chưa nghiệm thu:** thao tác bằng trình đọc màn hình thực tế (NVDA/JAWS/VoiceOver); chạy migration 001–007 từ đầu trên database trống rồi kiểm tra RLS/Storage/RPC; triển khai lên dịch vụ hoặc VPS thật và xác minh push Git tạo bản chạy mới. Môi trường hiện tại không có Docker/PostgreSQL cục bộ để thử migration trên database trống, và chưa có máy chủ triển khai. Phần nhập lại JSON, sao lưu tệp Storage và gắn tệp vào thẻ học vẫn chưa được triển khai. Màn AI đã nêu rõ dữ liệu học được gửi tới Gemini, nhưng cần giới hạn sử dụng khóa máy chủ và kiểm tra chất lượng câu hỏi trước khi dùng trong bản triển khai thật.

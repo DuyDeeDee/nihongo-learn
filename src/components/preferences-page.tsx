@@ -4,6 +4,8 @@ import Link from "next/link";
 import {useEffect, useRef, useState} from "react";
 import {AuthPanel} from "@/components/auth-panel";
 import {UploadManager} from "@/components/upload-manager";
+import {clientCache} from "@/lib/cache";
+import {playCorrectSound} from "@/lib/audio-feedback";
 import {hasSupabaseConfig, supabase} from "@/lib/supabase-client";
 
 type Preferences = {
@@ -27,6 +29,7 @@ export function PreferencesPage({view}: {view: "setup" | "settings"}) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [confirmationText, setConfirmationText] = useState("");
+  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     const client = supabase;
@@ -116,6 +119,38 @@ export function PreferencesPage({view}: {view: "setup" | "settings"}) {
     finally {setBusy(false);}
   }
 
+  async function handleImportFile(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file || !userId || busy || importing) return;
+    if (!window.confirm(`Nhập dữ liệu từ tệp “${file.name}”? Các mục từ vựng, ngữ pháp và câu hỏi sẽ được khôi phục vào tài khoản của bạn.`)) {
+      event.target.value = "";
+      return;
+    }
+    setImporting(true); setError(""); setNotice("");
+    try {
+      const text = await file.text();
+      const json = JSON.parse(text);
+      if (!json || typeof json !== "object" || !json.tables) {
+        throw new Error("Tệp không đúng cấu trúc xuất của Nihongo Quest (thiếu trường 'tables').");
+      }
+      const response = await fetch("/api/account/import", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(json),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Không nhập được dữ liệu.");
+      clientCache.clear();
+      playCorrectSound();
+      setNotice(data.message || "Nhập dữ liệu thành công!");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Không đọc được tệp JSON.");
+    } finally {
+      setImporting(false);
+      event.target.value = "";
+    }
+  }
+
   return <div className="stack" style={{maxWidth: 760}}>
     <div><div className="eyebrow">{view === "setup" ? "BẮT ĐẦU HỌC" : "CÁ NHÂN HÓA"}</div><h1 className="page-title">{view === "setup" ? "Thiết lập học tập" : "Cài đặt"}</h1><p className="muted">Chọn mục tiêu và cách ôn phù hợp với lịch của bạn.</p></div>
     {hasSupabaseConfig && !authReady && <p className="muted">Đang kiểm tra đăng nhập…</p>}
@@ -132,7 +167,30 @@ export function PreferencesPage({view}: {view: "setup" | "settings"}) {
       <button className="btn" type="submit" disabled={busy || !authReady}>{busy ? "Đang lưu…" : userId ? "Lưu vào tài khoản" : "Lưu lựa chọn demo"}</button>
     </form>}
     {view === "settings" && userId && <UploadManager/>}
-    {view === "settings" && userId && <section className="card stack"><h2 className="section-title">Dữ liệu của bạn</h2><p className="muted">Xuất dữ liệu dạng JSON trước khi xóa. Bản xuất gồm dữ liệu bảng; tệp đã tải lên Storage không nằm trong JSON.</p><a className="btn secondary" href="/api/account/export" download>Xuất dữ liệu JSON</a><hr style={{width: "100%", border: 0, borderTop: "1px solid var(--line)"}}/><p>Xóa vĩnh viễn học liệu, lịch ôn, kết quả Quiz/Games, tệp cá nhân và cài đặt. Tài khoản đăng nhập được giữ lại.</p><label className="stack">Gõ XÓA DỮ LIỆU để xác nhận<input className="input" value={confirmationText} onChange={event => setConfirmationText(event.target.value)} autoComplete="off"/></label><button className="btn" style={{background: "#a34434"}} type="button" disabled={busy || confirmationText !== "XÓA DỮ LIỆU"} onClick={() => void removeAll()}>Xóa toàn bộ dữ liệu học tập</button></section>}
+    {view === "settings" && userId && <section className="card stack">
+      <h2 className="section-title">Sao lưu & Khôi phục dữ liệu</h2>
+      <p className="muted">
+        Xuất toàn bộ học liệu, tiến độ và ngân hàng câu hỏi thành tệp JSON hoặc khôi phục từ tệp đã xuất.
+      </p>
+      <div style={{display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center"}}>
+        <a className="btn secondary" href="/api/account/export" download>📤 Xuất dữ liệu JSON</a>
+        <label className="btn secondary" style={{cursor: "pointer", display: "inline-flex", alignItems: "center"}}>
+          {importing ? "Đang nhập dữ liệu…" : "📥 Nhập dữ liệu JSON"}
+          <input
+            type="file"
+            accept=".json,application/json"
+            style={{display: "none"}}
+            onChange={handleImportFile}
+            disabled={importing || busy}
+          />
+        </label>
+      </div>
+      <hr style={{width: "100%", border: 0, borderTop: "1px solid var(--line)", margin: "10px 0"}}/>
+      <h2 className="section-title" style={{color: "var(--red)", fontSize: 18}}>Xóa dữ liệu</h2>
+      <p className="muted" style={{margin: 0}}>Xóa vĩnh viễn học liệu, lịch ôn, kết quả Quiz/Games, tệp cá nhân và cài đặt. Tài khoản đăng nhập được giữ lại.</p>
+      <label className="stack">Gõ XÓA DỮ LIỆU để xác nhận<input className="input" value={confirmationText} onChange={event => setConfirmationText(event.target.value)} autoComplete="off"/></label>
+      <button className="btn" style={{background: "#a34434"}} type="button" disabled={busy || confirmationText !== "XÓA DỮ LIỆU"} onClick={() => void removeAll()}>Xóa toàn bộ dữ liệu học tập</button>
+    </section>}
     <div style={{display: "flex", gap: 10, flexWrap: "wrap"}}><Link className="btn secondary" href="/dashboard">Mở tổng quan →</Link><Link className="btn secondary" href="/lessons">Xem các bài học</Link></div>
   </div>;
 }

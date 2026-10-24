@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import {useEffect, useRef, useState} from "react";
-import {AuthPanel} from "@/components/auth-panel";
-import type {Lesson} from "@/lib/data";
-import {hasSupabaseConfig, supabase} from "@/lib/supabase-client";
+import { useEffect, useRef, useState } from "react";
+import { AuthPanel } from "@/components/auth-panel";
+import { FuriganaText } from "@/components/furigana-text";
+import { clientCache } from "@/lib/cache";
+import type { Lesson } from "@/lib/data";
+import { hasSupabaseConfig, supabase } from "@/lib/supabase-client";
 
 type GrammarItem = {
   id: string;
@@ -41,7 +43,7 @@ function errorMessage(error: unknown) {
     ? error.message : "Không thể kết nối Supabase. Vui lòng thử lại.";
 }
 
-export function GrammarPage({lesson}: {lesson: Lesson}) {
+export function GrammarPage({ lesson }: { lesson: Lesson }) {
   const activeUserId = useRef<string | null>(null);
   const authVersion = useRef(0);
   const [userId, setUserId] = useState<string | null>(null);
@@ -62,22 +64,23 @@ export function GrammarPage({lesson}: {lesson: Lesson}) {
     if (!client) return;
     let active = true;
     const version = authVersion.current;
-    void client.auth.getUser().then(({data, error: authError}) => {
+    void client.auth.getUser().then(({ data, error: authError }) => {
       if (!active || authVersion.current !== version) return;
       const id = authError ? null : (data.user?.id ?? null);
       activeUserId.current = id;
       setUserId(id);
       setAuthReady(true);
     });
-    const {data: {subscription}} = client.auth.onAuthStateChange((event, session) => {
-      if (!active) return;
-      if (event !== "INITIAL_SESSION") authVersion.current += 1;
-      const id = session?.user?.id ?? null;
-      activeUserId.current = id;
-      setUserId(id);
-      setAuthReady(true);
+    const { data: { subscription } } = client.auth.onAuthStateChange((event, session) => {
+      if (active) {
+        if (event !== "INITIAL_SESSION") authVersion.current += 1;
+        const id = session?.user?.id ?? null;
+        activeUserId.current = id;
+        setUserId(id);
+        setAuthReady(true);
+      }
     });
-    return () => {active = false; subscription.unsubscribe();};
+    return () => { active = false; subscription.unsubscribe(); };
   }, []);
 
   useEffect(() => {
@@ -87,23 +90,30 @@ export function GrammarPage({lesson}: {lesson: Lesson}) {
     async function load() {
       if (!client || !userId) return;
       try {
-        const {data: edition, error: editionError} = await client.from("textbook_editions")
+        const { data: edition, error: editionError } = await client.from("textbook_editions")
           .select("id").eq("slug", "minna-no-nihongo-shokyu-2e").single();
         if (editionError) throw editionError;
-        const {data: volume, error: volumeError} = await client.from("textbook_volumes")
+        const { data: volume, error: volumeError } = await client.from("textbook_volumes")
           .select("id").eq("edition_id", edition.id).eq("volume_number", lesson.volume).single();
         if (volumeError) throw volumeError;
-        const {data: lessonRow, error: lessonError} = await client.from("lessons")
+        const { data: lessonRow, error: lessonError } = await client.from("lessons")
           .select("id").eq("volume_id", volume.id).eq("lesson_number", lesson.number).eq("is_active", true).single();
         if (lessonError) throw lessonError;
-        const {data, error: itemsError} = await client.from("grammar_items")
+        const { data, error: itemsError } = await client.from("grammar_items")
           .select(columns).eq("user_id", userId).eq("lesson_id", lessonRow.id)
           .order("sort_order").order("created_at").order("id");
         if (itemsError) throw itemsError;
         if (!active) return;
+        const grammarItems = (data ?? []) as GrammarItem[];
         setLessonId(lessonRow.id);
-        setItems((data ?? []) as GrammarItem[]);
+        setItems(grammarItems);
         setLoadedForUser(userId);
+        if (userId) {
+          clientCache.set(`grammar:${lesson.volume}:${lesson.number}:${userId}`, {
+            lessonId: lessonRow.id,
+            items: grammarItems,
+          });
+        }
       } catch (cause) {
         if (active) setError(`Không tải được ngữ pháp của bài ${lesson.number}: ${errorMessage(cause)}`);
       } finally {
@@ -113,28 +123,44 @@ export function GrammarPage({lesson}: {lesson: Lesson}) {
 
     void Promise.resolve().then(() => {
       if (!active) return;
-      setLessonId(null);
-      setItems([]);
-      setLoadedForUser(null);
       setFormOpen(false);
       setEditingId(null);
       setDraft(emptyDraft);
       setError("");
       setNotice("");
-      if (!client || !userId) return;
-      setLoading(true);
+      if (!client || !userId) {
+        setItems([]);
+        setLessonId(null);
+        setLoadedForUser(null);
+        return;
+      }
+
+      // Check cache first for 0ms transition
+      const cacheKey = `grammar:${lesson.volume}:${lesson.number}:${userId}`;
+      const cached = clientCache.get<{ lessonId: string; items: GrammarItem[] }>(cacheKey);
+      if (cached) {
+        setLessonId(cached.lessonId);
+        setItems(cached.items);
+        setLoadedForUser(userId);
+      } else {
+        setLessonId(null);
+        setItems([]);
+        setLoadedForUser(null);
+        setLoading(true);
+      }
+
       void load();
     });
-    return () => {active = false;};
+    return () => { active = false; };
   }, [lesson.number, lesson.volume, userId]);
 
   function change(field: keyof Draft, value: string) {
-    setDraft(current => ({...current, [field]: value}));
+    setDraft(current => ({ ...current, [field]: value }));
   }
 
   function startAdd() {
     const nextOrder = items.reduce((max, item) => Math.max(max, item.sort_order), -1) + 1;
-    setDraft({...emptyDraft, sort_order: String(nextOrder)});
+    setDraft({ ...emptyDraft, sort_order: String(nextOrder) });
     setEditingId(null);
     setFormOpen(true);
     setError("");
@@ -161,41 +187,46 @@ export function GrammarPage({lesson}: {lesson: Lesson}) {
     const explanation = draft.explanation.trim();
     const sortOrder = Number(draft.sort_order);
     if (!pattern || !explanation) {
-      setError("Vui lòng nhập mẫu ngữ pháp và giải thích.");
+      setError("Mẫu ngữ pháp và giải thích là bắt buộc.");
       return;
     }
-    if (!Number.isInteger(sortOrder) || sortOrder < 0 || sortOrder > 2147483647) {
-      setError("Thứ tự phải là số nguyên từ 0 trở lên.");
-      return;
-    }
-    const values = {
-      pattern, explanation, sort_order: sortOrder,
-      example_japanese: draft.example_japanese.trim() || null,
-      example_meaning: draft.example_meaning.trim() || null,
-      source_note: draft.source_note.trim() || null,
-    };
     setBusy(true);
     setError("");
     setNotice("");
+    const payload = {
+      pattern, explanation,
+      example_japanese: draft.example_japanese.trim() || null,
+      example_meaning: draft.example_meaning.trim() || null,
+      source_note: draft.source_note.trim() || null,
+      sort_order: Number.isFinite(sortOrder) ? Math.max(0, Math.floor(sortOrder)) : 0,
+    };
     try {
-      const result = editingId
-        ? await client.from("grammar_items").update(values).eq("id", editingId)
-            .eq("user_id", userId).eq("lesson_id", lessonId).select(columns).maybeSingle()
-        : await client.from("grammar_items").insert({...values, user_id: userId, lesson_id: lessonId})
-            .select(columns).single();
-      if (result.error) throw result.error;
-      if (!result.data) throw new Error("Không tìm thấy ghi chú trong bài này.");
-      if (activeUserId.current !== userId) return;
-      const saved = result.data as GrammarItem;
-      setItems(current => sortItems(editingId
-        ? current.map(item => item.id === saved.id ? saved : item)
-        : [...current, saved]));
+      if (editingId) {
+        const { data, error: updateError } = await client.from("grammar_items")
+          .update(payload).eq("id", editingId).eq("user_id", userId).eq("lesson_id", lessonId)
+          .select(columns).single();
+        if (updateError) throw updateError;
+        if (activeUserId.current !== userId) return;
+        const updated = sortItems(items.map(entry => entry.id === editingId ? (data as GrammarItem) : entry));
+        setItems(updated);
+        clientCache.set(`grammar:${lesson.volume}:${lesson.number}:${userId}`, { lessonId, items: updated });
+        setNotice("Đã cập nhật ngữ pháp.");
+      } else {
+        const { data, error: insertError } = await client.from("grammar_items")
+          .insert({ ...payload, user_id: userId, lesson_id: lessonId })
+          .select(columns).single();
+        if (insertError) throw insertError;
+        if (activeUserId.current !== userId) return;
+        const updated = sortItems([data as GrammarItem, ...items]);
+        setItems(updated);
+        clientCache.set(`grammar:${lesson.volume}:${lesson.number}:${userId}`, { lessonId, items: updated });
+        setNotice("Đã thêm ngữ pháp.");
+      }
       setFormOpen(false);
       setEditingId(null);
       setDraft(emptyDraft);
-      setNotice(editingId ? "Đã cập nhật ngữ pháp." : "Đã thêm ngữ pháp.");
     } catch (cause) {
-      if (activeUserId.current === userId) setError(`Không lưu được ngữ pháp: ${errorMessage(cause)}`);
+      setError(`Không lưu được ngữ pháp: ${errorMessage(cause)}`);
     } finally {
       setBusy(false);
     }
@@ -204,63 +235,192 @@ export function GrammarPage({lesson}: {lesson: Lesson}) {
   async function remove(item: GrammarItem) {
     const client = supabase;
     if (!client || !userId || !lessonId || busy) return;
-    if (!window.confirm(`Xóa mẫu “${item.pattern}” khỏi bài ${lesson.number}?`)) return;
+    if (!window.confirm(`Xóa “${item.pattern}” khỏi bài ${lesson.number}?`)) return;
     setBusy(true);
     setError("");
     setNotice("");
     try {
-      const {data, error: deleteError} = await client.from("grammar_items")
+      const { data, error: deleteError } = await client.from("grammar_items")
         .delete().eq("id", item.id).eq("user_id", userId).eq("lesson_id", lessonId)
         .select("id").maybeSingle();
       if (deleteError) throw deleteError;
-      if (!data) throw new Error("Không tìm thấy ghi chú trong bài này.");
+      if (!data) throw new Error("Không tìm thấy mục ngữ pháp trong bài này.");
       if (activeUserId.current !== userId) return;
-      setItems(current => current.filter(entry => entry.id !== item.id));
-      if (editingId === item.id) {setFormOpen(false); setEditingId(null);}
+      const updated = items.filter(entry => entry.id !== item.id);
+      setItems(updated);
+      clientCache.set(`grammar:${lesson.volume}:${lesson.number}:${userId}`, { lessonId, items: updated });
+      if (editingId === item.id) { setFormOpen(false); setEditingId(null); }
       setNotice("Đã xóa ngữ pháp.");
     } catch (cause) {
-      if (activeUserId.current === userId) setError(`Không xóa được ngữ pháp: ${errorMessage(cause)}`);
+      setError(`Không xóa được ngữ pháp: ${errorMessage(cause)}`);
     } finally {
       setBusy(false);
     }
   }
 
-  return <div className="stack">
-    <Link href={`/lessons/${lesson.id}`} className="muted">← Quay lại bài học</Link>
-    <div className="lesson">
-      <div><div className="eyebrow">EDITION 2 · VOLUME {lesson.volume} · BÀI {lesson.number}</div><h1 className="page-title">Ngữ pháp</h1></div>
-      {userId && loadedForUser === userId && lessonId && <button className="btn" type="button" disabled={busy} onClick={startAdd}>＋ Thêm mẫu</button>}
+  return (
+    <div className="stack">
+      <Link href={`/lessons/${lesson.id}`} className="muted">← Quay lại bài học</Link>
+      <div className="lesson">
+        <div>
+          <div className="eyebrow">EDITION 2 · VOLUME {lesson.volume} · BÀI {lesson.number}</div>
+          <h1 className="page-title">Ngữ pháp</h1>
+        </div>
+        {userId && loadedForUser === userId && lessonId && (
+          <button className="btn" type="button" disabled={busy} onClick={startAdd}>＋ Thêm mẫu</button>
+        )}
+      </div>
+
+      {!hasSupabaseConfig && (
+        <div className="card stack">
+          <p>Để lưu ngữ pháp, hãy cấu hình Supabase trong <code>.env.local</code> rồi khởi động lại ứng dụng.</p>
+          <Link href="/settings" className="btn secondary">Xem cài đặt</Link>
+        </div>
+      )}
+
+      {hasSupabaseConfig && authReady && !userId && (
+        <div className="stack">
+          <p className="muted">Đăng nhập để xem và lưu ghi chú ngữ pháp của bạn theo từng bài.</p>
+          <AuthPanel />
+        </div>
+      )}
+
+      {hasSupabaseConfig && !authReady && <p className="muted">Đang kiểm tra đăng nhập…</p>}
+
+      {userId && loading && items.length === 0 && (
+        <div className="card stack">
+          <div className="skeleton-shimmer" style={{ height: 26, width: "35%" }} />
+          <div className="skeleton-shimmer" style={{ height: 18, width: "70%" }} />
+          <div className="skeleton-shimmer" style={{ height: 44, width: "100%" }} />
+        </div>
+      )}
+
+      {error && <p role="alert" style={{ color: "var(--red)" }}>{error}</p>}
+      {notice && <p role="status" style={{ color: "var(--green)" }}>{notice}</p>}
+
+      {userId && loadedForUser === userId && lessonId && (
+        <>
+          {formOpen && (
+            <form className="card stack" onSubmit={save}>
+              <h2 className="section-title">{editingId ? "Sửa ngữ pháp" : "Thêm ngữ pháp"}</h2>
+              <label className="stack">
+                Mẫu ngữ pháp *
+                <input
+                  className="input jp"
+                  lang="ja"
+                  required
+                  maxLength={500}
+                  value={draft.pattern}
+                  onChange={e => change("pattern", e.target.value)}
+                  placeholder="Nhập mẫu ngữ pháp (ví dụ: ～は～です)"
+                />
+              </label>
+              <label className="stack">
+                Giải thích *
+                <textarea
+                  className="input"
+                  required
+                  rows={3}
+                  maxLength={4000}
+                  value={draft.explanation}
+                  onChange={e => change("explanation", e.target.value)}
+                  placeholder="Giải thích cách dùng bằng lời của bạn"
+                />
+              </label>
+              <div className="grid grid-2">
+                <label className="stack">
+                  Ví dụ tiếng Nhật
+                  <textarea
+                    className="input jp"
+                    lang="ja"
+                    rows={2}
+                    maxLength={2000}
+                    value={draft.example_japanese}
+                    onChange={e => change("example_japanese", e.target.value)}
+                  />
+                </label>
+                <label className="stack">
+                  Nghĩa ví dụ
+                  <textarea
+                    className="input"
+                    rows={2}
+                    maxLength={2000}
+                    value={draft.example_meaning}
+                    onChange={e => change("example_meaning", e.target.value)}
+                  />
+                </label>
+              </div>
+              <div className="grid grid-2">
+                <label className="stack">
+                  Ghi chú nguồn
+                  <input
+                    className="input"
+                    maxLength={1000}
+                    value={draft.source_note}
+                    onChange={e => change("source_note", e.target.value)}
+                  />
+                </label>
+                <label className="stack">
+                  Thứ tự trong bài
+                  <input
+                    className="input"
+                    type="number"
+                    min={0}
+                    max={2147483647}
+                    step={1}
+                    required
+                    value={draft.sort_order}
+                    onChange={e => change("sort_order", e.target.value)}
+                  />
+                </label>
+              </div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <button className="btn" type="submit" disabled={busy}>{busy ? "Đang lưu…" : editingId ? "Lưu thay đổi" : "Thêm mẫu"}</button>
+                <button className="btn secondary" type="button" disabled={busy} onClick={() => { setFormOpen(false); setEditingId(null); }}>Hủy</button>
+              </div>
+            </form>
+          )}
+
+          {items.length === 0 && !loading && (
+            <div className="card stack">
+              <p className="muted">Bài này chưa có ghi chú ngữ pháp. Hãy nhập nội dung từ nguồn bạn có quyền sử dụng.</p>
+              {!formOpen && <button className="btn" type="button" onClick={startAdd}>＋ Thêm mẫu của bạn</button>}
+            </div>
+          )}
+
+          {items.length > 0 && (
+            <>
+              <p className="muted">{items.length} mẫu ngữ pháp trong bài {lesson.number}</p>
+              <div className="stack">
+                {items.map(item => (
+                  <article className="card stack card-interactive" key={item.id}>
+                    <div className="lesson">
+                      <strong className="jp" lang="ja" style={{ fontSize: 24, lineHeight: 1.8 }}>
+                        <FuriganaText text={item.pattern} />
+                      </strong>
+                      <span className="tag">Thứ tự {item.sort_order}</span>
+                    </div>
+                    <p style={{ whiteSpace: "pre-wrap", margin: 0, fontSize: 16 }}>{item.explanation}</p>
+                    {item.example_japanese && (
+                      <p className="jp" lang="ja" style={{ whiteSpace: "pre-wrap", margin: 0, fontSize: 17, lineHeight: 1.8 }}>
+                        <FuriganaText text={item.example_japanese} />
+                      </p>
+                    )}
+                    {item.example_meaning && (
+                      <p className="muted" style={{ whiteSpace: "pre-wrap", margin: 0 }}>{item.example_meaning}</p>
+                    )}
+                    {item.source_note && <small className="muted">Nguồn: {item.source_note}</small>}
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 4 }}>
+                      <button className="btn secondary" type="button" aria-label={`Sửa mẫu ${item.pattern}`} disabled={busy} onClick={() => startEdit(item)}>Sửa</button>
+                      <button className="btn secondary" type="button" aria-label={`Xóa mẫu ${item.pattern}`} disabled={busy} onClick={() => void remove(item)}>Xóa</button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </>
+          )}
+        </>
+      )}
     </div>
-    {!hasSupabaseConfig && <div className="card stack"><p>Để lưu ngữ pháp, hãy cấu hình Supabase trong <code>.env.local</code> rồi khởi động lại ứng dụng.</p><Link href="/settings" className="btn secondary">Xem cài đặt</Link></div>}
-    {hasSupabaseConfig && authReady && !userId && <div className="stack"><p className="muted">Đăng nhập để xem và lưu ghi chú ngữ pháp của bạn theo từng bài.</p><AuthPanel/></div>}
-    {hasSupabaseConfig && !authReady && <p className="muted">Đang kiểm tra đăng nhập…</p>}
-    {userId && loading && <p className="muted">Đang tải ngữ pháp…</p>}
-    {error && <p role="alert" style={{color: "#a34434"}}>{error}</p>}
-    {notice && <p role="status" style={{color: "#526c4a"}}>{notice}</p>}
-    {userId && loadedForUser === userId && lessonId && !loading && <>
-      {formOpen && <form className="card stack" onSubmit={save}>
-        <h2 className="section-title">{editingId ? "Sửa ngữ pháp" : "Thêm ngữ pháp"}</h2>
-        <label className="stack">Mẫu ngữ pháp *<input className="input jp" lang="ja" required maxLength={500} value={draft.pattern} onChange={e => change("pattern", e.target.value)} placeholder="Nhập mẫu ngữ pháp của bạn"/></label>
-        <label className="stack">Giải thích *<textarea className="input" required rows={3} maxLength={4000} value={draft.explanation} onChange={e => change("explanation", e.target.value)} placeholder="Giải thích cách dùng bằng lời của bạn"/></label>
-        <div className="grid grid-2">
-          <label className="stack">Ví dụ tiếng Nhật<textarea className="input jp" lang="ja" rows={2} maxLength={2000} value={draft.example_japanese} onChange={e => change("example_japanese", e.target.value)}/></label>
-          <label className="stack">Nghĩa ví dụ<textarea className="input" rows={2} maxLength={2000} value={draft.example_meaning} onChange={e => change("example_meaning", e.target.value)}/></label>
-        </div>
-        <div className="grid grid-2">
-          <label className="stack">Ghi chú nguồn<input className="input" maxLength={1000} value={draft.source_note} onChange={e => change("source_note", e.target.value)}/></label>
-          <label className="stack">Thứ tự trong bài<input className="input" type="number" min={0} max={2147483647} step={1} required value={draft.sort_order} onChange={e => change("sort_order", e.target.value)}/></label>
-        </div>
-        <div style={{display: "flex", gap: 10, flexWrap: "wrap"}}><button className="btn" type="submit" disabled={busy}>{busy ? "Đang lưu…" : editingId ? "Lưu thay đổi" : "Thêm mẫu"}</button><button className="btn secondary" type="button" disabled={busy} onClick={() => {setFormOpen(false); setEditingId(null);}}>Hủy</button></div>
-      </form>}
-      {items.length === 0 && <div className="card stack"><p className="muted">Bài này chưa có ghi chú ngữ pháp. Hãy nhập nội dung từ nguồn bạn có quyền sử dụng.</p>{!formOpen && <button className="btn" type="button" onClick={startAdd}>＋ Thêm mẫu của bạn</button>}</div>}
-      {items.length > 0 && <><p className="muted">{items.length} mẫu ngữ pháp trong bài {lesson.number}</p><div className="stack">{items.map(item => <article className="card stack" key={item.id}>
-        <div className="lesson"><strong className="jp" lang="ja" style={{fontSize: 22}}>{item.pattern}</strong><span className="tag">Thứ tự {item.sort_order}</span></div>
-        <p style={{whiteSpace: "pre-wrap", margin: 0}}>{item.explanation}</p>
-        {item.example_japanese && <p className="jp" lang="ja" style={{whiteSpace: "pre-wrap", margin: 0}}>{item.example_japanese}</p>}
-        {item.example_meaning && <p className="muted" style={{whiteSpace: "pre-wrap", margin: 0}}>{item.example_meaning}</p>}
-        {item.source_note && <small className="muted">Nguồn: {item.source_note}</small>}
-        <div style={{display: "flex", gap: 10, flexWrap: "wrap"}}><button className="btn secondary" type="button" disabled={busy} onClick={() => startEdit(item)}>Sửa</button><button className="btn secondary" type="button" disabled={busy} onClick={() => void remove(item)}>Xóa</button></div>
-      </article>)}</div></>}
-    </>}
-  </div>;
+  );
 }

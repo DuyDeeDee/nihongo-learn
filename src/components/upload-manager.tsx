@@ -79,7 +79,7 @@ export function UploadManager() {
     {loading ? <p className="muted">Đang tải tệp…</p> : files.length === 0 ? <p className="muted">Chưa có tệp nào.</p> :
       <div className="stack">{files.map(file => <div className="lesson" key={file.id}>
         <div><strong>{file.media_type.startsWith("image/") ? "Ảnh" : "Âm thanh"} · {new Date(file.created_at).toLocaleString("vi-VN")}</strong><div className="muted">{Math.ceil(file.size_bytes / 1024)} KB · {file.object_path.split("/").at(-1)}</div></div>
-        <div style={{display: "flex", gap: 8, flexWrap: "wrap"}}><button className="btn secondary" type="button" disabled={busy} onClick={() => void openFile(file.id)}>Mở</button><button className="btn secondary" type="button" disabled={busy} onClick={() => void removeFile(file.id)}>Xóa</button></div>
+        <div style={{display: "flex", gap: 8, flexWrap: "wrap"}}><button className="btn secondary" type="button" aria-label={`Mở tệp ${file.object_path.split("/").at(-1)}`} disabled={busy} onClick={() => void openFile(file.id)}>Mở</button><button className="btn secondary" type="button" aria-label={`Xóa tệp ${file.object_path.split("/").at(-1)}`} disabled={busy} onClick={() => void removeFile(file.id)}>Xóa</button></div>
       </div>)}</div>}
     {files.length >= 100 && <p className="muted">Đang hiển thị 100 tệp mới nhất.</p>}
   </section>;

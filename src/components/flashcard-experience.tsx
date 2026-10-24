@@ -1,22 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import {useEffect, useRef, useState} from "react";
-import {AuthPanel} from "@/components/auth-panel";
-import {FlashcardSession} from "@/components/flashcard-session";
-import {checkAnswer, type AnswerMode} from "@/lib/answer";
-import {hasSupabaseConfig, supabase} from "@/lib/supabase-client";
-import type {LiveCard, LiveSession, StudySnapshot} from "@/lib/study-types";
+import { useEffect, useRef, useState } from "react";
+import { AuthPanel } from "@/components/auth-panel";
+import { FlashcardSession } from "@/components/flashcard-session";
+import { FuriganaText } from "@/components/furigana-text";
+import { ConfettiCanvas } from "@/components/confetti";
+import { checkAnswer, type AnswerMode } from "@/lib/answer";
+import { playCorrectSound, playIncorrectSound, playVictorySound } from "@/lib/audio-feedback";
+import { hasSupabaseConfig, supabase } from "@/lib/supabase-client";
+import type { LiveCard, LiveSession, StudySnapshot } from "@/lib/study-types";
 
-type QueueEntry = {card: LiveCard; retry: boolean};
+type QueueEntry = { card: LiveCard; retry: boolean };
 type Step = "prompt" | "meaning" | "recall" | "result" | "done";
-type GradeResult = {correct: boolean; rating: string; dueAt: string};
+type GradeResult = { correct: boolean; rating: string; dueAt: string };
 
 function initialQueue(session: LiveSession): QueueEntry[] {
   return [
-    ...session.cards.filter(card => !card.graded).map(card => ({card, retry: false})),
+    ...session.cards.filter(card => !card.graded).map(card => ({ card, retry: false })),
     ...session.cards.filter(card => card.graded && !card.correct && !card.retryCompleted)
-      .map(card => ({card, retry: true})),
+      .map(card => ({ card, retry: true })),
   ];
 }
 
@@ -26,7 +29,7 @@ async function readResponse<T>(response: Response): Promise<T> {
   return data as T;
 }
 
-export function FlashcardExperience({lessonKey, demo = false}: {lessonKey?: string; demo?: boolean}) {
+export function FlashcardExperience({ lessonKey, demo = false }: { lessonKey?: string; demo?: boolean }) {
   const authVersion = useRef(0);
   const [userId, setUserId] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(!hasSupabaseConfig);
@@ -35,22 +38,22 @@ export function FlashcardExperience({lessonKey, demo = false}: {lessonKey?: stri
     if (!client) return;
     let active = true;
     const version = authVersion.current;
-    void client.auth.getUser().then(({data, error}) => {
-      if (active && authVersion.current === version) {setUserId(error ? null : (data.user?.id ?? null)); setAuthReady(true);}
+    void client.auth.getUser().then(({ data, error }) => {
+      if (active && authVersion.current === version) { setUserId(error ? null : (data.user?.id ?? null)); setAuthReady(true); }
     });
-    const {data: {subscription}} = client.auth.onAuthStateChange((event, session) => {
-      if (active) {if (event !== "INITIAL_SESSION") authVersion.current += 1; setUserId(session?.user?.id ?? null); setAuthReady(true);}
+    const { data: { subscription } } = client.auth.onAuthStateChange((event, session) => {
+      if (active) { if (event !== "INITIAL_SESSION") authVersion.current += 1; setUserId(session?.user?.id ?? null); setAuthReady(true); }
     });
-    return () => {active = false; subscription.unsubscribe();};
+    return () => { active = false; subscription.unsubscribe(); };
   }, []);
 
-  if (demo || !hasSupabaseConfig) return <FlashcardSession/>;
+  if (demo || !hasSupabaseConfig) return <FlashcardSession />;
   if (!authReady) return <p className="muted">Đang kiểm tra đăng nhập…</p>;
-  if (!userId) return <div className="stack"><h1 className="page-title">Flashcard</h1><p className="muted">Đăng nhập để học và lưu lịch ôn từ từ vựng của bạn.</p><AuthPanel/><Link className="btn secondary" href="/flashcards?demo=1">Thử phiên demo</Link></div>;
-  return <LiveFlashcards key={`${userId}:${lessonKey ?? "all"}`} lessonKey={lessonKey}/>;
+  if (!userId) return <div className="stack"><h1 className="page-title">Flashcard</h1><p className="muted">Đăng nhập để học và lưu lịch ôn từ từ vựng của bạn.</p><AuthPanel /><Link className="btn secondary" href="/flashcards?demo=1">Thử phiên demo</Link></div>;
+  return <LiveFlashcards key={`${userId}:${lessonKey ?? "all"}`} lessonKey={lessonKey} />;
 }
 
-function LiveFlashcards({lessonKey}: {lessonKey?: string}) {
+function LiveFlashcards({ lessonKey }: { lessonKey?: string }) {
   const [snapshot, setSnapshot] = useState<StudySnapshot | null>(null);
   const [session, setSession] = useState<LiveSession | null>(null);
   const [queue, setQueue] = useState<QueueEntry[]>([]);
@@ -65,6 +68,8 @@ function LiveFlashcards({lessonKey}: {lessonKey?: string}) {
   const [busy, setBusy] = useState(false);
   const [recallStartedAt, setRecallStartedAt] = useState(0);
   const [elapsedMs, setElapsedMs] = useState(0);
+  const [animClass, setAnimClass] = useState("");
+  const [showConfetti, setShowConfetti] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -72,8 +77,8 @@ function LiveFlashcards({lessonKey}: {lessonKey?: string}) {
       try {
         const query = lessonKey ? `?lessonKey=${encodeURIComponent(lessonKey)}` : "";
         const [response, preferencesResponse] = await Promise.all([
-          fetch(`/api/study${query}`, {signal: controller.signal, cache: "no-store"}),
-          fetch("/api/preferences", {signal: controller.signal, cache: "no-store"}),
+          fetch(`/api/study${query}`, { signal: controller.signal, cache: "no-store" }),
+          fetch("/api/preferences", { signal: controller.signal, cache: "no-store" }),
         ]);
         const result = await readResponse<StudySnapshot>(response);
         if (controller.signal.aborted) return;
@@ -83,7 +88,7 @@ function LiveFlashcards({lessonKey}: {lessonKey?: string}) {
           setQueue(initialQueue(result.session));
           setMode(result.session.mode);
         } else if (preferencesResponse.ok) {
-          const preferences = await preferencesResponse.json() as {answerMode?: AnswerMode};
+          const preferences = await preferencesResponse.json() as { answerMode?: AnswerMode };
           if (!controller.signal.aborted && (preferences.answerMode === "kana" || preferences.answerMode === "kanji" || preferences.answerMode === "flexible")) {
             setMode(preferences.answerMode);
           }
@@ -103,6 +108,7 @@ function LiveFlashcards({lessonKey}: {lessonKey?: string}) {
     setSaved(false);
     setNote("");
     setError("");
+    setAnimClass("");
   }
 
   async function start() {
@@ -110,8 +116,8 @@ function LiveFlashcards({lessonKey}: {lessonKey?: string}) {
     setError("");
     try {
       const response = await fetch("/api/study", {
-        method: "POST", headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({lessonKey, mode}),
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lessonKey, mode }),
       });
       const result = await readResponse<StudySnapshot>(response);
       setSnapshot(result);
@@ -133,20 +139,25 @@ function LiveFlashcards({lessonKey}: {lessonKey?: string}) {
     if (!supabase || !session || busy) return;
     setBusy(true);
     setError("");
-    const {error: finishError} = await supabase.rpc("finish_flashcard_session", {p_session_id: session.id});
-    if (finishError) setError(finishError.message);
-    else setStep("done");
+    const { error: finishError } = await supabase.rpc("finish_flashcard_session", { p_session_id: session.id });
+    if (finishError) {
+      setError(finishError.message);
+    } else {
+      playVictorySound();
+      setShowConfetti(true);
+      setStep("done");
+    }
     setBusy(false);
   }
 
   function advance() {
-    if (index + 1 >= queue.length) {void finish(); return;}
+    if (index + 1 >= queue.length) { void finish(); return; }
     setIndex(current => current + 1);
     resetCard();
   }
 
-  function reveal() {setStep("meaning");}
-  function hide() {setStep("recall"); setAnswer(""); setRecallStartedAt(Date.now());}
+  function reveal() { setStep("meaning"); }
+  function hide() { setStep("recall"); setAnswer(""); setAnimClass(""); setRecallStartedAt(Date.now()); }
 
   async function submit() {
     const entry = queue[index];
@@ -158,23 +169,35 @@ function LiveFlashcards({lessonKey}: {lessonKey?: string}) {
     try {
       if (entry.retry) {
         const response = await fetch("/api/study/retry", {
-          method: "POST", headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({sessionCardId: entry.card.sessionCardId, answer}),
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionCardId: entry.card.sessionCardId, answer }),
         });
-        const result = await readResponse<{correct: boolean}>(response);
+        const result = await readResponse<{ correct: boolean }>(response);
         setCorrect(result.correct);
         setSaved(true);
-        setNote(result.correct ? "Đúng ở lượt luyện lại. Lịch ôn không bị tính thêm." : "Chưa đúng. Hãy gõ lại từ này.");
+        if (result.correct) {
+          playCorrectSound();
+          setAnimClass("animate-success");
+          setNote("Đúng ở lượt luyện lại. Lịch ôn không bị tính thêm.");
+        } else {
+          playIncorrectSound();
+          setAnimClass("animate-shake");
+          setNote("Chưa đúng. Hãy gõ lại từ này.");
+        }
       } else {
         const ok = checkAnswer(answer, entry.card.acceptedAnswers, session.mode);
         setCorrect(ok);
         if (ok) {
+          playCorrectSound();
+          setAnimClass("animate-success");
           setSaved(false);
           setNote("Đúng rồi. Chọn mức độ nhớ để lưu lịch ôn.");
         } else {
+          playIncorrectSound();
+          setAnimClass("animate-shake");
           const response = await fetch("/api/study/grade", {
-            method: "POST", headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({sessionCardId: entry.card.sessionCardId, answer, rating: "again", elapsedMs: elapsed}),
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sessionCardId: entry.card.sessionCardId, answer, rating: "again", elapsedMs: elapsed }),
           });
           const result = await readResponse<GradeResult>(response);
           setSaved(true);
@@ -196,8 +219,8 @@ function LiveFlashcards({lessonKey}: {lessonKey?: string}) {
     setError("");
     try {
       const response = await fetch("/api/study/grade", {
-        method: "POST", headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({sessionCardId: entry.card.sessionCardId, answer, rating, elapsedMs}),
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionCardId: entry.card.sessionCardId, answer, rating, elapsedMs }),
       });
       const result = await readResponse<GradeResult>(response);
       setSaved(true);
@@ -214,35 +237,72 @@ function LiveFlashcards({lessonKey}: {lessonKey?: string}) {
   if (snapshot && !snapshot.gradingReady) return <div className="card stack"><h1 className="page-title">Flashcard cá nhân</h1><p>Máy chủ chưa có <code>SUPABASE_SERVICE_ROLE_KEY</code> để chấm an toàn.</p><Link href="/flashcards?demo=1" className="btn secondary">Học thử bản demo</Link></div>;
   if (!session) return <div className="stack">
     <div><div className="eyebrow">ÔN TẬP CÁ NHÂN</div><h1 className="page-title">Flashcard đến hạn</h1></div>
-    {error && <p role="alert" style={{color:"#a34434"}}>{error}</p>}
+    {error && <p role="alert" style={{ color: "var(--red)" }}>{error}</p>}
     {snapshot?.gradingReady && snapshot.dueCount === 0 && <div className="card stack"><p className="muted">Chưa có thẻ đến hạn{lessonKey ? " trong bài này" : ""}. Hãy thêm từ vựng hoặc quay lại khi thẻ đến hạn.</p><Link href="/lessons" className="btn secondary">Mở bài học</Link></div>}
     {snapshot?.gradingReady && snapshot.dueCount > 0 && <div className="card stack">
       <p>{snapshot.dueCount} thẻ đến hạn{lessonKey ? " trong bài này" : ""}. Mỗi phiên học tối đa 20 thẻ.</p>
-      <label className="stack">Chế độ trả lời<select className="input" value={mode} onChange={event=>setMode(event.target.value as AnswerMode)}><option value="flexible">Flexible</option><option value="kana">Kana</option><option value="kanji">Kanji</option></select></label>
-      <button className="btn" disabled={busy} onClick={()=>void start()}>{busy ? "Đang bắt đầu…" : "Bắt đầu ôn"}</button>
+      <label className="stack">Chế độ trả lời<select className="input" value={mode} onChange={event => setMode(event.target.value as AnswerMode)}><option value="flexible">Flexible</option><option value="kana">Kana</option><option value="kanji">Kanji</option></select></label>
+      <button className="btn" disabled={busy} onClick={() => void start()}>{busy ? "Đang bắt đầu…" : "Bắt đầu ôn"}</button>
     </div>}
   </div>;
-  if (step === "done") return <div className="card flashcard"><h1 className="page-title">Hoàn thành phiên học</h1><p className="muted">Kết quả đã được lưu vào Supabase.</p><Link className="btn" href="/dashboard">Về tổng quan</Link></div>;
-  if (!entry) return <div className="card stack"><h1 className="page-title">Các thẻ đã hoàn tất</h1><p className="muted">Xác nhận kết thúc phiên học.</p>{error && <p role="alert">{error}</p>}<button className="btn" disabled={busy} onClick={()=>void finish()}>Hoàn tất phiên</button></div>;
+  if (step === "done") return (
+    <div className="card flashcard animate-success">
+      {showConfetti && <ConfettiCanvas onDone={() => setShowConfetti(false)} />}
+      <h1 className="page-title">Hoàn thành phiên học</h1>
+      <p className="muted">Toàn bộ thẻ trong phiên đã được ghi nhận vào Supabase!</p>
+      <Link className="btn" href="/dashboard">Về tổng quan</Link>
+    </div>
+  );
+  if (!entry) return <div className="card stack"><h1 className="page-title">Các thẻ đã hoàn tất</h1><p className="muted">Xác nhận kết thúc phiên học.</p>{error && <p role="alert">{error}</p>}<button className="btn" disabled={busy} onClick={() => void finish()}>Hoàn tất phiên</button></div>;
 
   const card = entry.card;
   const percent = Math.round(index / queue.length * 100);
   return <div className="stack">
-    <div className="lesson"><div><div className="eyebrow">{entry.retry ? "LUYỆN LẠI" : "FLASHCARD CÁ NHÂN"}</div><h1 className="page-title">Luyện nhớ chủ động</h1></div><Link className="tag" href="/dashboard">Rời phiên</Link></div>
+    {showConfetti && <ConfettiCanvas onDone={() => setShowConfetti(false)} />}
+    <div className="lesson"><div><div className="eyebrow">{entry.retry ? "LUYỆN LẠI" : "FLASHCARD CÁ NHÂN"}</div><h1 className="page-title">Luyện nhớ chủ động</h1></div><Link className="tag" href="/dashboard" onClick={e => { if (!window.confirm("Bạn có chắc muốn rời phiên học hiện tại?")) e.preventDefault() }}>Rời phiên</Link></div>
     <div className="lesson"><span className="muted">Thẻ {index + 1} / {queue.length}</span><span className="muted">{session.mode.toUpperCase()} · Nhật → nghĩa → gõ lại</span></div>
-    <div className="progress"><i style={{width: `${percent}%`}}/></div>
-    <article className="card flashcard" aria-live="polite">
-      {step === "prompt" && <><div className="eyebrow">TỪ TIẾNG NHẬT</div><div className="jp" lang="ja" style={{fontSize:48}}>{card.japanese}</div>{card.kana && <div className="jp muted" lang="ja">{card.kana}</div>}<p className="muted">Đọc từ trước khi xem nghĩa.</p><button className="btn" onClick={reveal}>Hiện nghĩa</button></>}
-      {step === "meaning" && <><div className="eyebrow">NGHĨA TIẾNG VIỆT</div><div style={{fontSize:30,fontWeight:700}}>{card.meaning}</div><button className="btn" onClick={hide}>Ẩn từ Nhật và kiểm tra</button></>}
-      {step === "recall" && <><div className="eyebrow">GÕ LẠI TỪ TIẾNG NHẬT</div><p className="muted">Dùng Japanese IME. Từ gốc đã được ẩn.</p><form onSubmit={event=>{event.preventDefault();void submit()}} style={{width:"100%"}}><label htmlFor="live-recall" className="eyebrow">ĐÁP ÁN CỦA BẠN</label><input id="live-recall" className="input jp" lang="ja" autoComplete="off" autoCapitalize="off" value={answer} onChange={event=>setAnswer(event.target.value)} onKeyDown={event=>{if(event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault()}}/><button className="btn" style={{width:"100%",marginTop:12}} disabled={busy || !answer.trim()}>{busy ? "Đang kiểm tra…" : "Kiểm tra đáp án"}</button></form></>}
-      {step === "result" && <><span className="tag">{correct ? "CHÍNH XÁC" : "CHƯA ĐÚNG"}</span><div className="jp" lang="ja" style={{fontSize:38}}>{card.japanese}</div>{card.kana && <span className="jp muted" lang="ja">{card.kana}</span>}<div style={{fontSize:22}}>{card.meaning}</div><p className="muted" role="status">{note}</p>
-        {correct && !entry.retry && !saved && <div style={{display:"flex",gap:8,flexWrap:"wrap"}}><button className="btn secondary" disabled={busy} onClick={()=>void rate("hard")}>Hard</button><button className="btn green" disabled={busy} onClick={()=>void rate("good")}>Good</button><button className="btn" disabled={busy} onClick={()=>void rate("easy")}>Easy</button></div>}
-        {!correct && !entry.retry && saved && <button className="btn" onClick={()=>{setQueue(current=>[...current,{card,retry:true}]);setIndex(current=>current+1);resetCard()}}>Again · luyện lại cuối phiên</button>}
-        {!correct && entry.retry && <button className="btn" onClick={()=>{setStep("recall");setAnswer("");setRecallStartedAt(Date.now())}}>Gõ lại lần nữa</button>}
+    <div className="progress" role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100} aria-label="Tiến độ phiên học"><i style={{ width: `${percent}%` }} /></div>
+    <article className={`card flashcard ${animClass}`}>
+      {step === "prompt" && <>
+        <div className="eyebrow">TỪ TIẾNG NHẬT</div>
+        <div className="jp" lang="ja" style={{ fontSize: 52, lineHeight: 1.8 }}>
+          <FuriganaText japanese={card.japanese} kana={card.kana} />
+        </div>
+        {card.kana && card.japanese !== card.kana && <div className="jp muted" lang="ja" style={{ fontSize: 20 }}>{card.kana}</div>}
+        <p className="muted">Đọc từ trước khi xem nghĩa.</p>
+        <button className="btn" onClick={reveal}>Hiện nghĩa</button>
+      </>}
+      {step === "meaning" && <>
+        <div className="eyebrow">NGHĨA TIẾNG VIỆT</div>
+        <div style={{ fontSize: 32, fontWeight: 700 }}>{card.meaning}</div>
+        <button className="btn" onClick={hide}>Ẩn từ Nhật và kiểm tra</button>
+      </>}
+      {step === "recall" && <>
+        <div className="eyebrow">GÕ LẠI TỪ TIẾNG NHẬT</div>
+        <p className="muted">Dùng Japanese IME. Từ gốc đã được ẩn.</p>
+        <form onSubmit={event => { event.preventDefault(); void submit() }} style={{ width: "100%" }}>
+          <label htmlFor="live-recall" className="eyebrow">ĐÁP ÁN CỦA BẠN</label>
+          <input id="live-recall" className="input jp" lang="ja" autoComplete="off" autoCapitalize="off" value={answer} onChange={event => { setAnswer(event.target.value); setAnimClass(""); }} onKeyDown={event => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault() }} />
+          <button className="btn" style={{ width: "100%", marginTop: 12 }} disabled={busy || !answer.trim()}>{busy ? "Đang kiểm tra…" : "Kiểm tra đáp án"}</button>
+        </form>
+      </>}
+      {step === "result" && <>
+        <span className="tag" role="status" aria-live="polite" style={{ background: correct ? "var(--green-light)" : "var(--red-light)", color: correct ? "var(--green)" : "var(--red)", fontSize: 14 }}>
+          {correct ? "✓ CHÍNH XÁC" : "✗ CHƯA ĐÚNG"}
+        </span>
+        <div className="jp" lang="ja" style={{ fontSize: 44, lineHeight: 1.8 }}>
+          <FuriganaText japanese={card.japanese} kana={card.kana} />
+        </div>
+        {card.kana && card.japanese !== card.kana && <span className="jp muted" lang="ja" style={{ fontSize: 18 }}>{card.kana}</span>}
+        <div style={{ fontSize: 24, fontWeight: 600 }}>{card.meaning}</div>
+        <p className="muted" role="status" aria-live="polite">{note}</p>
+        {correct && !entry.retry && !saved && <div className="rating-group"><button className="btn secondary" disabled={busy} onClick={() => void rate("hard")}>Hard</button><button className="btn green" disabled={busy} onClick={() => void rate("good")}>Good</button><button className="btn" disabled={busy} onClick={() => void rate("easy")}>Easy</button></div>}
+        {!correct && !entry.retry && saved && <button className="btn" onClick={() => { setQueue(current => [...current, { card, retry: true }]); setIndex(current => current + 1); resetCard() }}>Again · luyện lại cuối phiên</button>}
+        {!correct && entry.retry && <button className="btn" onClick={() => { setStep("recall"); setAnswer(""); setAnimClass(""); setRecallStartedAt(Date.now()) }}>Gõ lại lần nữa</button>}
         {correct && saved && <button className="btn green" disabled={busy} onClick={advance}>Tiếp tục</button>}
       </>}
     </article>
-    {error && <p role="alert" style={{color:"#a34434"}}>{error}</p>}
-    <p className="muted" style={{textAlign:"center",fontSize:13}}>Phiên này được lưu vào tài khoản Supabase của bạn.</p>
+    {error && <p role="alert" style={{ color: "var(--red)" }}>{error}</p>}
+    <p className="muted" style={{ textAlign: "center", fontSize: 13 }}>Phiên này được lưu vào tài khoản Supabase của bạn.</p>
   </div>;
 }
