@@ -12,20 +12,22 @@ export function AuthPanel() {
   const [mode, setMode] = useState<"password" | "magiclink">("password");
   const [isRegister, setIsRegister] = useState(false);
   const [user, setUser] = useState<User | null>(null);
-  const [message, setMessage] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
+  const [message, setMessage] = useState(() => {
     if (typeof window !== "undefined" && window.location.search.includes("error")) {
       const params = new URLSearchParams(window.location.search);
       const desc = params.get("error_description");
       if (desc) {
-        setMessage(
-          desc.includes("expired") || desc.includes("invalid")
-            ? "Liên kết đăng nhập đã hết hạn hoặc đã được sử dụng. Vui lòng đăng nhập bằng mật khẩu hoặc yêu cầu liên kết mới."
-            : desc
-        );
+        return desc.includes("expired") || desc.includes("invalid")
+          ? "Liên kết đăng nhập đã hết hạn hoặc đã được sử dụng. Vui lòng đăng nhập bằng mật khẩu hoặc yêu cầu liên kết mới."
+          : desc;
       }
+    }
+    return "";
+  });
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.location.search.includes("error")) {
       window.history.replaceState({}, document.title, window.location.pathname);
     }
 
