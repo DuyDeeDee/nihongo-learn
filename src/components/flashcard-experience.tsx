@@ -87,12 +87,14 @@ function LiveFlashcards({ lessonKey }: { lessonKey?: string }) {
     advance: () => void;
     rate: (rating: "hard" | "good" | "easy") => Promise<void>;
     reveal: () => void;
+    showPrompt: () => void;
     hide: () => void;
     resetCard: () => void;
   }>({
     advance: () => {},
     rate: () => Promise.resolve(),
     reveal: () => {},
+    showPrompt: () => {},
     hide: () => {},
     resetCard: () => {},
   });
@@ -104,12 +106,25 @@ function LiveFlashcards({ lessonKey }: { lessonKey?: string }) {
         return;
       }
       const curEntry = queue[index];
-      if (e.key === "Enter" || e.key === " ") {
-        if (e.key === " ") e.preventDefault();
+
+      // Mũi tên ← / → để lật qua lại giữa từ tiếng Nhật và nghĩa tiếng Việt
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
         if (step === "prompt") {
           e.preventDefault();
           handlersRef.current.reveal();
         } else if (step === "meaning") {
+          e.preventDefault();
+          handlersRef.current.showPrompt();
+        }
+        return;
+      }
+
+      // Enter hoặc Space:
+      // - Khi đang ở prompt hoặc meaning: chuyển sang bước gõ từ (recall)
+      // - Khi ở result: chấm điểm hoặc chuyển câu tiếp theo
+      if (e.key === "Enter" || e.key === " ") {
+        if (e.key === " ") e.preventDefault();
+        if (step === "prompt" || step === "meaning") {
           e.preventDefault();
           handlersRef.current.hide();
         } else if (step === "result") {
@@ -224,6 +239,7 @@ function LiveFlashcards({ lessonKey }: { lessonKey?: string }) {
     resetCard();
   }
 
+  function showPrompt() { setStep("prompt"); }
   function reveal() { setStep("meaning"); }
   function hide() { setStep("recall"); setAnswer(""); setAnimClass(""); setRecallStartedAt(Date.now()); }
 
@@ -301,7 +317,7 @@ function LiveFlashcards({ lessonKey }: { lessonKey?: string }) {
   }
 
   useEffect(() => {
-    handlersRef.current = { advance, rate, reveal, hide, resetCard };
+    handlersRef.current = { advance, rate, reveal, showPrompt, hide, resetCard };
   });
 
   const currentLesson = lessonKey ? lessons.find(l => l.id === lessonKey) : null;
@@ -370,13 +386,32 @@ function LiveFlashcards({ lessonKey }: { lessonKey?: string }) {
           <FuriganaText japanese={card.japanese} kana={card.kana} />
         </div>
         {card.kana && card.japanese !== card.kana && <div className="jp muted" lang="ja" style={{ fontSize: 20 }}>{card.kana}</div>}
-        <p className="muted">Đọc từ trước khi xem nghĩa.</p>
-        <button className="btn" onClick={reveal}>Hiện nghĩa</button>
+        <p className="muted" style={{ fontSize: 14 }}>
+          Bấm <strong>← / →</strong> để xem nghĩa, nhấn <strong>Enter</strong> để gõ từ.
+        </p>
+        <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap", width: "100%", marginTop: 8 }}>
+          <button type="button" className="btn secondary" onClick={reveal} style={{ flex: 1, minWidth: 140 }}>
+            Xem nghĩa tiếng Việt →
+          </button>
+          <button type="button" className="btn" onClick={hide} style={{ flex: 1, minWidth: 160 }}>
+            Bắt đầu gõ từ (Enter ↵)
+          </button>
+        </div>
       </>}
       {step === "meaning" && <>
         <div className="eyebrow">NGHĨA TIẾNG VIỆT</div>
-        <div style={{ fontSize: 32, fontWeight: 700 }}>{card.meaning}</div>
-        <button className="btn" onClick={hide}>Ẩn từ Nhật và kiểm tra</button>
+        <div style={{ fontSize: 32, fontWeight: 700, margin: "14px 0" }}>{card.meaning}</div>
+        <p className="muted" style={{ fontSize: 14 }}>
+          Bấm <strong>← / →</strong> để xem lại từ tiếng Nhật, nhấn <strong>Enter</strong> để gõ từ.
+        </p>
+        <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap", width: "100%", marginTop: 8 }}>
+          <button type="button" className="btn secondary" onClick={showPrompt} style={{ flex: 1, minWidth: 140 }}>
+            ← Xem lại tiếng Nhật
+          </button>
+          <button type="button" className="btn" onClick={hide} style={{ flex: 1, minWidth: 160 }}>
+            Ẩn từ và gõ lại (Enter ↵)
+          </button>
+        </div>
       </>}
       {step === "recall" && <>
         <div className="eyebrow">GÕ LẠI TỪ TIẾNG NHẬT</div>

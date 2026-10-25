@@ -56,11 +56,13 @@ export function FlashcardSession() {
     advance: () => void;
     rate: (rating: Rating) => void;
     reveal: () => void;
+    showPrompt: () => void;
     hide: () => void;
   }>({
     advance: () => {},
     rate: () => {},
     reveal: () => {},
+    showPrompt: () => {},
     hide: () => {},
   });
 
@@ -69,12 +71,21 @@ export function FlashcardSession() {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) {
         return;
       }
-      if (e.key === "Enter" || e.key === " ") {
-        if (e.key === " ") e.preventDefault();
+      // ArrowLeft / ArrowRight to toggle between Japanese word and Vietnamese meaning
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
         if (step === "prompt") {
           e.preventDefault();
           handlersRef.current.reveal();
         } else if (step === "meaning") {
+          e.preventDefault();
+          handlersRef.current.showPrompt();
+        }
+        return;
+      }
+
+      if (e.key === "Enter" || e.key === " ") {
+        if (e.key === " ") e.preventDefault();
+        if (step === "prompt" || step === "meaning") {
           e.preventDefault();
           handlersRef.current.hide();
         } else if (step === "result") {
@@ -99,6 +110,10 @@ export function FlashcardSession() {
     () => (mode === "kana" ? "Kana · nhập Hiragana/Katakana" : mode === "kanji" ? "Kanji · nhập cách viết có Kanji" : "Flexible · chấp nhận Kana hoặc Kanji"),
     [mode]
   );
+
+  function showPrompt() {
+    setStep("prompt");
+  }
 
   function reveal() {
     setStep("meaning");
@@ -164,7 +179,7 @@ export function FlashcardSession() {
   }
 
   useEffect(() => {
-    handlersRef.current = { advance, rate, reveal, hide };
+    handlersRef.current = { advance, rate, reveal, showPrompt, hide };
   });
 
   function again() {
@@ -217,16 +232,35 @@ export function FlashcardSession() {
               <FuriganaText japanese={word.kanji} kana={word.jp} />
             </div>
             {word.jp && word.kanji !== word.jp && <div className="jp muted" lang="ja" style={{ fontSize: 22 }}>{word.jp}</div>}
-            <p className="muted">Hãy đọc từ này trước khi xem nghĩa.</p>
-            <button className="btn" onClick={reveal}>Hiện nghĩa</button>
+            <p className="muted" style={{ fontSize: 14 }}>
+              Bấm <strong>← / →</strong> để xem nghĩa, nhấn <strong>Enter</strong> để bắt đầu gõ từ.
+            </p>
+            <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap", width: "100%", marginTop: 8 }}>
+              <button type="button" className="btn secondary" onClick={reveal} style={{ flex: 1, minWidth: 140 }}>
+                Xem nghĩa tiếng Việt →
+              </button>
+              <button type="button" className="btn" onClick={hide} style={{ flex: 1, minWidth: 160 }}>
+                Bắt đầu gõ từ (Enter ↵)
+              </button>
+            </div>
           </>
         )}
         {step === "meaning" && (
           <>
             <div className="eyebrow">NGHĨA TIẾNG VIỆT</div>
-            <div style={{ fontSize: 32, fontWeight: 700 }}>{word.meaning}</div>
+            <div style={{ fontSize: 32, fontWeight: 700, margin: "14px 0" }}>{word.meaning}</div>
             <p className="jp muted" lang="ja" style={{ fontSize: 22 }}>{word.jp}</p>
-            <button className="btn" onClick={hide}>Ẩn từ Nhật và kiểm tra</button>
+            <p className="muted" style={{ fontSize: 14 }}>
+              Bấm <strong>← / →</strong> để xem lại từ tiếng Nhật, nhấn <strong>Enter</strong> để bắt đầu gõ từ.
+            </p>
+            <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap", width: "100%", marginTop: 8 }}>
+              <button type="button" className="btn secondary" onClick={showPrompt} style={{ flex: 1, minWidth: 140 }}>
+                ← Xem lại tiếng Nhật
+              </button>
+              <button type="button" className="btn" onClick={hide} style={{ flex: 1, minWidth: 160 }}>
+                Ẩn từ và gõ lại (Enter ↵)
+              </button>
+            </div>
           </>
         )}
         {step === "recall" && (
