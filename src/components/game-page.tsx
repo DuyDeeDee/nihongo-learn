@@ -18,6 +18,25 @@ type Draft = { prompt: string; options: string; answers: string; explanation: st
 type Feedback = { correct: boolean; score: number; acceptedAnswers: string[]; explanation: string | null };
 const emptyDraft: Draft = { prompt: "", options: "", answers: "", explanation: "", difficulty: "3" };
 
+function generateUUID(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    try {
+      return crypto.randomUUID();
+    } catch {
+      // Fallback
+    }
+  }
+  return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, c =>
+    (
+      +c ^
+      ((typeof crypto !== "undefined" && crypto.getRandomValues
+        ? crypto.getRandomValues(new Uint8Array(1))[0]
+        : Math.floor(Math.random() * 256)) &
+        (15 >> (+c / 4)))
+    ).toString(16)
+  );
+}
+
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, cache: "no-store" });
   const data = await response.json();
@@ -260,7 +279,7 @@ function LessonGame({ kind, lesson, path, title }: { kind: Kind; lesson: (typeof
     if (!questions.length) return;
     setPlaying(true);
     setIndex(0);
-    setAttemptKey(crypto.randomUUID());
+    setAttemptKey(generateUUID());
     setSelected([]);
     setChoice("");
     setFeedback(null);
@@ -274,10 +293,12 @@ function LessonGame({ kind, lesson, path, title }: { kind: Kind; lesson: (typeof
 
   async function submit() {
     const question = questions[index];
-    if (!question || busy || feedback || !attemptKey) return;
+    if (!question || busy || feedback) return;
     const answer = kind === "ordering" ? selected.map(position => question.options[position]) : choice;
     if (kind === "ordering" && selected.length !== question.options.length) return;
     if (kind === "particle" && !choice) return;
+    const activeKey = attemptKey || generateUUID();
+    if (!attemptKey) setAttemptKey(activeKey);
     setBusy(true);
     setError("");
     try {
@@ -285,7 +306,7 @@ function LessonGame({ kind, lesson, path, title }: { kind: Kind; lesson: (typeof
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          attemptKey,
+          attemptKey: activeKey,
           questionId: question.id,
           gameType: kind === "ordering" ? "sentence_builder" : "particle_master",
           answer,
@@ -319,7 +340,7 @@ function LessonGame({ kind, lesson, path, title }: { kind: Kind; lesson: (typeof
       return;
     }
     setIndex(nextIndex);
-    setAttemptKey(crypto.randomUUID());
+    setAttemptKey(generateUUID());
     setSelected([]);
     setChoice("");
     setFeedback(null);
@@ -480,6 +501,8 @@ function LessonGame({ kind, lesson, path, title }: { kind: Kind; lesson: (typeof
                   {busy ? "Đang lưu…" : "Kiểm tra"}
                 </button>
               )}
+
+              {error && <p role="alert" style={{ color: "var(--red)", margin: "4px 0 0" }}>{error}</p>}
 
               {feedback && (
                 <button className="btn" type="button" onClick={next}>
