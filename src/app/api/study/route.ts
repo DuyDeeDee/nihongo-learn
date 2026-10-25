@@ -110,6 +110,8 @@ export async function GET(request: Request) {
         .select("lesson_id").eq("user_id", user.id).in("status", ["in_progress", "completed"]);
       if (activeLessons && activeLessons.length > 0) {
         query = query.in("lesson_id", activeLessons.map(l => l.lesson_id));
+      } else {
+        return snapshot(null, 0);
       }
     }
     const {count, error} = await query;

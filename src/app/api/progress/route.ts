@@ -72,7 +72,14 @@ export async function GET() {
     }).sort((a, b) => a.number - b.number);
     const cardById = new Map(cards.map(card => [card.id, card]));
     const now = Date.now();
-    const activeCards = cards.filter(card => !card.suspended_at);
+    const activeLessonIdSet = new Set(
+      savedProgress
+        .filter(row => row.status === "in_progress" || row.status === "completed")
+        .map(row => row.lesson_id)
+    );
+    const activeCards = cards.filter(
+      card => !card.suspended_at && activeLessonIdSet.has(card.lesson_id)
+    );
     const dueCount = activeCards.filter(card => new Date(card.due_at).getTime() <= now).length;
     const activity = [
       ...logs.map(row => ({date: row.reviewed_at, ms: row.elapsed_ms ?? 0})),
