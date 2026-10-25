@@ -68,7 +68,7 @@ button {
 }
 
 .jp {
-  font-family: "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+  font-family: var(--font-plus-jakarta), "Plus Jakarta Sans", "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
   letter-spacing: 0.02em;
 }
 

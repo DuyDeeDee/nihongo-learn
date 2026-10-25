@@ -48,6 +48,8 @@ test("autoAnnotateFurigana annotates verb conjugations and leaves existing brack
   assert.equal(autoAnnotateFurigana("書かないでください"), "[書]{か}かないでください");
   assert.equal(autoAnnotateFurigana("薬を飲まなければなりません"), "[薬]{くすり}を[飲]{の}まなければなりません");
   assert.equal(autoAnnotateFurigana("ここで [写真]{しゃしん}を 撮らないで ください。"), "ここで [写真]{しゃしん}を [撮]{と}らないで ください。");
+  assert.equal(autoAnnotateFurigana("吸あない"), "[吸]{す}あない");
+  assert.equal(autoAnnotateFurigana("飲みなくても いいです"), "[飲]{の}みなくても いいです");
 });
 
 test("cleanJapaneseForSpeech strips bracket tokens for natural TTS", () => {

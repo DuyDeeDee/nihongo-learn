@@ -11,6 +11,20 @@ function failure(message: string, status: number) {
   return NextResponse.json({error: message}, {status});
 }
 
+function pseudoRandomPermutation(count: number, seedStr: string): number[] {
+  let hash = 0;
+  for (let i = 0; i < seedStr.length; i++) {
+    hash = ((hash << 5) - hash + seedStr.charCodeAt(i)) | 0;
+  }
+  const indices = Array.from({ length: count }, (_, i) => i);
+  for (let i = count - 1; i > 0; i--) {
+    hash = ((hash << 5) - hash + i) | 0;
+    const j = Math.abs(hash) % (i + 1);
+    [indices[i], indices[j]] = [indices[j], indices[i]];
+  }
+  return indices;
+}
+
 async function loadSession(client: NonNullable<Awaited<ReturnType<typeof getAuthenticatedClient>>>["client"], userId: string, sessionId: string) {
   const {data: session, error: sessionError} = await client.from("study_sessions")
     .select("id,lesson_id,metadata,status").eq("id", sessionId)
@@ -31,7 +45,18 @@ async function loadSession(client: NonNullable<Awaited<ReturnType<typeof getAuth
     id: session.id,
     lessonId: session.lesson_id,
     status: session.status,
-    questions: ids.map(id => byId.get(id)).filter(question => question !== undefined),
+    questions: ids.map(id => {
+      const q = byId.get(id);
+      if (!q) return undefined;
+      if (q.question_type === "multiple_choice" && Array.isArray(q.options) && q.options.length > 1) {
+        const perm = pseudoRandomPermutation(q.options.length, `${session.id}:${q.id}`);
+        return {
+          ...q,
+          options: perm.map(i => q.options[i]),
+        };
+      }
+      return q;
+    }).filter(question => question !== undefined),
     attempts: attempts ?? [],
   };
 }
@@ -83,13 +108,19 @@ export async function POST(request: Request) {
     if (active) return NextResponse.json({session: await loadSession(auth.client, auth.user.id, active.id)});
     const {data: questions, error: questionError} = await auth.client.from("quiz_questions")
       .select("id").eq("user_id", auth.user.id).eq("lesson_id", lessonId)
-      .in("question_type", ["multiple_choice", "typed"])
-      .order("created_at").order("id").limit(20);
+      .in("question_type", ["multiple_choice", "typed"]);
     if (questionError) throw questionError;
     if (!questions?.length) return failure("Bài này chưa có câu hỏi Quiz.", 409);
+    // Shuffle question IDs randomly to prevent rote learning
+    const questionIds = questions.map(question => question.id);
+    for (let i = questionIds.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [questionIds[i], questionIds[j]] = [questionIds[j], questionIds[i]];
+    }
+    const selectedIds = questionIds.slice(0, 20);
     const {data: session, error: sessionError} = await trusted.from("study_sessions")
       .insert({user_id: auth.user.id, lesson_id: lessonId, session_type: "quiz",
-        metadata: {question_ids: questions.map(question => question.id)}})
+        metadata: {question_ids: selectedIds}})
       .select("id").single();
     if (sessionError?.code === "23505") {
       const {data: raced, error: racedError} = await auth.client.from("study_sessions")

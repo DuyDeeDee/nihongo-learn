@@ -1,16 +1,35 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AuthPanel } from "@/components/auth-panel";
 import { QuizPractice } from "@/components/practice";
 import { FuriganaText } from "@/components/furigana-text";
 import { ConfettiCanvas } from "@/components/confetti";
 import { playCorrectSound, playIncorrectSound, playVictorySound, setAudioFeedbackEnabled, useAudioFeedbackEnabled } from "@/lib/audio-feedback";
+import { isSpeechSupported, speakJapanese } from "@/lib/speech";
 import { clientCache } from "@/lib/cache";
 import { lessons } from "@/lib/data";
 import type { QuizQuestion } from "@/lib/quiz-domain";
 import { hasSupabaseConfig, supabase } from "@/lib/supabase-client";
+
+function hasJapanese(text?: string | null): boolean {
+  return Boolean(text && /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(text));
+}
+
+function extractTranslation(prompt?: string | null, explanation?: string | null): string | null {
+  if (explanation) {
+    const m = explanation.match(/(?:🇻🇳\s*)?Dịch\s*(?:câu|nghĩa)?:\s*([^\n]+)/i);
+    if (m) return m[1].trim();
+  }
+  if (prompt) {
+    const parenMatch = prompt.match(/\(([^\)]*[a-zA-Zà-ỹ][^\)]*)\)/);
+    if (parenMatch) return parenMatch[1].trim();
+    const quoteMatch = prompt.match(/['"“]([^'"”]*[a-zA-Zà-ỹ][^'"”]*)['"”]/);
+    if (quoteMatch) return quoteMatch[1].trim();
+  }
+  return null;
+}
 
 type PublicQuestion = Pick<QuizQuestion, "id" | "prompt" | "question_type" | "options" | "difficulty">;
 type QuizBankQuestion = QuizQuestion & { question_type: "multiple_choice" | "typed" };
@@ -290,7 +309,7 @@ function LessonQuiz({ lesson }: { lesson: (typeof lessons)[number] }) {
     } finally { setBusy(false); }
   }
 
-  async function submitAnswer() {
+  const submitAnswer = useCallback(async () => {
     const q = session?.questions[index];
     if (!q || !answer.trim() || busy || feedback) return;
     setBusy(true); setError("");
@@ -323,9 +342,19 @@ function LessonQuiz({ lesson }: { lesson: (typeof lessons)[number] }) {
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Không lưu được đáp án.");
     } finally { setBusy(false); }
-  }
+  }, [session, index, answer, busy, feedback]);
 
-  async function finishQuiz() {
+  const goToNextQuestion = useCallback(() => {
+    if (!session) return;
+    const next = session.questions.findIndex((entry, pos) => pos > index && !session.attempts.some(a => a.question_id === entry.id));
+    setIndex(next >= 0 ? next : session.questions.findIndex(entry => !session.attempts.some(a => a.question_id === entry.id)));
+    setAnswer("");
+    setFeedback(null);
+    setAnimClass("");
+    startedAt.current = Date.now();
+  }, [session, index]);
+
+  const finishQuiz = useCallback(async () => {
     if (!session || busy) return;
     setBusy(true); setError("");
     try {
@@ -346,11 +375,51 @@ function LessonQuiz({ lesson }: { lesson: (typeof lessons)[number] }) {
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Không lưu được tổng kết.");
     } finally { setBusy(false); }
-  }
+  }, [session, busy]);
 
   const question = session?.questions[index];
   const answered = session?.attempts.some(attempt => attempt.question_id === question?.id) ?? false;
   const allAnswered = session ? session.questions.every(entry => session.attempts.some(attempt => attempt.question_id === entry.id)) : false;
+
+  useEffect(() => {
+    if (!session || !question) return;
+    const currentQuestion = question;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (formOpen || aiModalOpen) return;
+      if (event.isComposing || (event as unknown as { keyCode: number }).keyCode === 229) return;
+      const isInput = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
+
+      // Number keys 1, 2, 3, 4 to choose options in multiple-choice
+      if (!isInput && !feedback && currentQuestion.question_type === "multiple_choice") {
+        const num = parseInt(event.key, 10);
+        if (num >= 1 && num <= currentQuestion.options.length) {
+          event.preventDefault();
+          setAnswer(currentQuestion.options[num - 1]);
+          setAnimClass("");
+          return;
+        }
+      }
+
+      // Enter to submit or proceed
+      if (event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
+        if (!feedback) {
+          if (answer.trim() && !busy) {
+            event.preventDefault();
+            void submitAnswer();
+          }
+        } else if (!allAnswered) {
+          event.preventDefault();
+          goToNextQuestion();
+        } else if (allAnswered && !busy) {
+          event.preventDefault();
+          void finishQuiz();
+        }
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [session, question, feedback, answered, allAnswered, answer, busy, formOpen, aiModalOpen, submitAnswer, goToNextQuestion, finishQuiz]);
 
   return (
     <div className="stack">
@@ -411,100 +480,153 @@ function LessonQuiz({ lesson }: { lesson: (typeof lessons)[number] }) {
           {session && (
             <section className={`card stack ${animClass}`}>
               <div className="eyebrow">CÂU {index + 1} / {session.questions.length}</div>
-              {question && (
-                <>
-                  <h2 className="section-title jp" style={{ fontSize: 30, lineHeight: 2.0 }}>
-                    <FuriganaText text={question.prompt} />
-                  </h2>
+              {question && (() => {
+                const translation = extractTranslation(question.prompt, feedback?.explanation ?? null);
+                const cleanExplanation = feedback?.explanation
+                  ?.replace(/(?:🇻🇳\s*)?Dịch\s*(?:câu|nghĩa)?:\s*[^\n]+/i, "")
+                  .trim();
 
-                  {question.question_type === "multiple_choice" ? (
-                    <div className="stack">
-                      {question.options.map(option => {
-                        const isChosen = answer === option;
-                        let btnVariant = isChosen ? "" : "secondary";
-                        let extraStyle: React.CSSProperties = { fontSize: 16, padding: "14px 18px", justifyContent: "flex-start", textAlign: "left" };
-
-                        if (feedback) {
-                          if (feedback.acceptedAnswers.includes(option)) {
-                            btnVariant = "green";
-                          } else if (isChosen && !feedback.correct) {
-                            extraStyle = { ...extraStyle, background: "#fbd8d1", color: "var(--red)", borderColor: "var(--red)" };
-                          }
-                        }
-
-                        return (
-                          <button
-                            className={`btn ${btnVariant}`}
-                            key={option}
-                            type="button"
-                            aria-pressed={isChosen}
-                            disabled={answered || busy}
-                            style={extraStyle}
-                            onClick={() => { setAnswer(option); setAnimClass(""); }}
-                          >
-                            <FuriganaText text={option} />
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <label className="stack">
-                      <span className="eyebrow">CÂU TRẢ LỜI CỦA BẠN</span>
-                      <input
-                        className="input jp"
-                        value={answer}
-                        disabled={answered || busy}
-                        maxLength={500}
-                        onChange={event => { setAnswer(event.target.value); setAnimClass(""); }}
-                        placeholder="Nhập đáp án của bạn bằng Japanese IME"
-                      />
-                    </label>
-                  )}
-
-                  {feedback && (
-                    <div role="status" aria-live="polite" className="stack" style={{ padding: "14px 18px", borderRadius: 12, background: feedback.correct ? "var(--green-light)" : "var(--red-light)" }}>
-                      <strong style={{ color: feedback.correct ? "var(--green)" : "var(--red)", fontSize: 17 }}>
-                        {feedback.correct ? "✓ Chính xác!" : "✗ Chưa đúng."}
-                      </strong>
-                      <span>
-                        Đáp án đúng: <FuriganaText text={feedback.acceptedAnswers.join(" / ")} />
-                      </span>
-                      {feedback.explanation && (
-                        <p className="muted" style={{ whiteSpace: "pre-wrap", margin: "4px 0 0" }}>
-                          <FuriganaText text={feedback.explanation} />
-                        </p>
+                return (
+                  <>
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                      <h2 className="section-title" style={{ fontSize: "clamp(22px, 2.5vw, 28px)", lineHeight: 1.8, margin: 0, flex: 1 }}>
+                        <FuriganaText text={question.prompt} enableTooltip />
+                      </h2>
+                      {isSpeechSupported() && hasJapanese(question.prompt) && (
+                        <button
+                          type="button"
+                          className="btn secondary"
+                          style={{ padding: "8px 14px", fontSize: 15, flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 6 }}
+                          onClick={() => speakJapanese(question.prompt)}
+                          title="Nghe phát âm câu hỏi"
+                          aria-label="Nghe phát âm câu hỏi"
+                        >
+                          🔊 Nghe
+                        </button>
                       )}
                     </div>
-                  )}
 
-                  {!answered && (
-                    <button className="btn" type="button" disabled={!answer.trim() || busy} onClick={() => void submitAnswer()}>
-                      {busy ? "Đang lưu…" : "Nộp đáp án"}
-                    </button>
-                  )}
+                    {question.question_type === "multiple_choice" ? (
+                      <div className="stack" style={{ gap: 10 }}>
+                        {question.options.map((option, optIdx) => {
+                          const isChosen = answer === option;
+                          let btnVariant = isChosen ? "" : "secondary";
+                          let extraStyle: React.CSSProperties = { fontSize: 16, padding: "14px 18px", justifyContent: "flex-start", textAlign: "left", flex: 1 };
 
-                  {answered && !allAnswered && (
-                    <button
-                      className="btn"
-                      type="button"
-                      onClick={() => {
-                        const next = session.questions.findIndex((entry, pos) => pos > index && !session.attempts.some(a => a.question_id === entry.id));
-                        setIndex(next >= 0 ? next : session.questions.findIndex(entry => !session.attempts.some(a => a.question_id === entry.id)));
-                        setAnswer("");
-                        setFeedback(null);
-                        setAnimClass("");
-                        startedAt.current = Date.now();
-                      }}
-                    >
-                      Câu tiếp theo →
-                    </button>
-                  )}
-                </>
-              )}
+                          if (feedback) {
+                            if (feedback.acceptedAnswers.includes(option)) {
+                              btnVariant = "green";
+                            } else if (isChosen && !feedback.correct) {
+                              extraStyle = { ...extraStyle, background: "#fbd8d1", color: "var(--red)", borderColor: "var(--red)" };
+                            }
+                          }
+
+                          return (
+                            <div key={option} style={{ display: "flex", gap: 8, alignItems: "stretch", width: "100%" }}>
+                              <button
+                                className={`btn ${btnVariant}`}
+                                type="button"
+                                aria-pressed={isChosen}
+                                disabled={answered || busy}
+                                style={extraStyle}
+                                onClick={() => { setAnswer(option); setAnimClass(""); }}
+                              >
+                                <span className="tag" style={{ marginRight: 10, opacity: 0.75, fontSize: 13, padding: "2px 8px" }}>
+                                  {optIdx + 1}
+                                </span>
+                                <FuriganaText text={option} enableTooltip />
+                              </button>
+                              {isSpeechSupported() && hasJapanese(option) && (
+                                <button
+                                  type="button"
+                                  className="btn secondary"
+                                  style={{ padding: "0 14px", flexShrink: 0, fontSize: 16 }}
+                                  onClick={(e) => { e.stopPropagation(); speakJapanese(option); }}
+                                  title="Nghe phát âm đáp án"
+                                  aria-label="Nghe phát âm đáp án"
+                                >
+                                  🔊
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <label className="stack">
+                        <span className="eyebrow">CÂU TRẢ LỜI CỦA BẠN</span>
+                        <input
+                          className="input jp"
+                          value={answer}
+                          disabled={answered || busy}
+                          maxLength={500}
+                          onChange={event => { setAnswer(event.target.value); setAnimClass(""); }}
+                          placeholder="Nhập đáp án của bạn bằng Japanese IME"
+                        />
+                      </label>
+                    )}
+
+                    {feedback && (
+                      <div role="status" aria-live="polite" className="stack" style={{ padding: "16px 20px", borderRadius: 12, background: feedback.correct ? "var(--green-light)" : "var(--red-light)", gap: 10 }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                          <strong style={{ color: feedback.correct ? "var(--green)" : "var(--red)", fontSize: 18 }}>
+                            {feedback.correct ? "✓ Chính xác!" : "✗ Chưa đúng."}
+                          </strong>
+                          {isSpeechSupported() && feedback.acceptedAnswers[0] && hasJapanese(feedback.acceptedAnswers[0]) && (
+                            <button
+                              type="button"
+                              className="tag"
+                              style={{ cursor: "pointer", border: "1px solid var(--border)", background: "var(--surface)", display: "inline-flex", alignItems: "center", gap: 4 }}
+                              onClick={() => speakJapanese(feedback.acceptedAnswers[0])}
+                              title="Nghe phát âm đáp án đúng"
+                            >
+                              🔊 Nghe đáp án
+                            </button>
+                          )}
+                        </div>
+
+                        <div style={{ fontSize: 16 }}>
+                          Đáp án đúng: <strong style={{ color: "var(--green)" }}><FuriganaText text={feedback.acceptedAnswers.join(" / ")} enableTooltip /></strong>
+                        </div>
+
+                        {translation && (
+                          <div style={{ padding: "10px 14px", borderRadius: 8, background: "rgba(255, 255, 255, 0.75)", border: "1px solid var(--border)" }}>
+                            <span className="eyebrow" style={{ color: "var(--blue)", fontSize: 11 }}>🇻🇳 DỊCH NGHĨA CÂU</span>
+                            <p style={{ margin: "4px 0 0", fontSize: 15, fontWeight: 500, color: "var(--text)" }}>{translation}</p>
+                          </div>
+                        )}
+
+                        {cleanExplanation && (
+                          <div className="muted" style={{ whiteSpace: "pre-wrap", margin: "4px 0 0", fontSize: 14 }}>
+                            <FuriganaText text={cleanExplanation} enableTooltip />
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {!answered && (
+                      <button className="btn" type="button" disabled={!answer.trim() || busy} onClick={() => void submitAnswer()} style={{ fontSize: 16, padding: "12px 24px" }}>
+                        {busy ? "Đang lưu…" : "Nộp đáp án (Enter ↵)"}
+                      </button>
+                    )}
+
+                    {answered && !allAnswered && (
+                      <button
+                        className="btn"
+                        type="button"
+                        onClick={goToNextQuestion}
+                        style={{ fontSize: 16, padding: "12px 24px" }}
+                      >
+                        Câu tiếp theo → (Enter ↵)
+                      </button>
+                    )}
+                  </>
+                );
+              })()}
 
               {allAnswered && (
-                <button className="btn green" type="button" disabled={busy} onClick={() => void finishQuiz()}>
-                  {busy ? "Đang lưu…" : "Xem tổng kết Quiz"}
+                <button className="btn green" type="button" disabled={busy} onClick={() => void finishQuiz()} style={{ fontSize: 16, padding: "12px 24px" }}>
+                  {busy ? "Đang lưu…" : "Xem tổng kết Quiz (Enter ↵)"}
                 </button>
               )}
             </section>

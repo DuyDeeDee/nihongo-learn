@@ -13467,9 +13467,70 @@ export function getN5FuriganaRegex(): { regex: RegExp; map: Map<string, string> 
   return { regex: cachedRegex, map: cachedMap };
 }
 
+let cachedSingleKanjiMap: Map<string, string> | null = null;
+
+function getSingleKanjiMap(): Map<string, string> {
+  if (!cachedSingleKanjiMap) {
+    const singleKanjiCounts = new Map<string, Map<string, number>>();
+    for (const entry of N5_FURIGANA_ENTRIES) {
+      const matches = entry.pattern.matchAll(/\[([\u4e00-\u9faf])\]\{([^\}]+)\}/g);
+      for (const m of matches) {
+        const kanji = m[1];
+        const reading = m[2];
+        let counts = singleKanjiCounts.get(kanji);
+        if (!counts) {
+          counts = new Map();
+          singleKanjiCounts.set(kanji, counts);
+        }
+        counts.set(reading, (counts.get(reading) ?? 0) + 1);
+      }
+    }
+    cachedSingleKanjiMap = new Map();
+    for (const [kanji, readings] of singleKanjiCounts) {
+      let bestReading = "";
+      let maxCount = -1;
+      for (const [r, count] of readings) {
+        if (count > maxCount) {
+          maxCount = count;
+          bestReading = r;
+        }
+      }
+      cachedSingleKanjiMap.set(kanji, bestReading);
+    }
+  }
+  return cachedSingleKanjiMap;
+}
+
+function annotateRemainingKanji(seg: string): string {
+  if (!/[\u4e00-\u9faf]/.test(seg)) return seg;
+  const singleMap = getSingleKanjiMap();
+  return seg.replace(/[\u4e00-\u9faf]/g, k => {
+    const r = singleMap.get(k);
+    return r ? `[${k}]{${r}}` : k;
+  });
+}
+
 function annotateSegment(seg: string, map: Map<string, string>, regex: RegExp): string {
   regex.lastIndex = 0;
-  return seg.replace(regex, match => map.get(match) ?? match);
+  const phraseAnnotated = seg.replace(regex, match => map.get(match) ?? match);
+  // Pass remaining isolated kanji (e.g. in test distractors) through single-kanji fallback
+  if (!/[\u4e00-\u9faf]/.test(phraseAnnotated)) return phraseAnnotated;
+  
+  const parts: string[] = [];
+  const bracketRegex = /\[([^\]]+)\]\{([^\}]+)\}/g;
+  let lastIdx = 0;
+  let match: RegExpExecArray | null;
+  while ((match = bracketRegex.exec(phraseAnnotated)) !== null) {
+    if (match.index > lastIdx) {
+      parts.push(annotateRemainingKanji(phraseAnnotated.slice(lastIdx, match.index)));
+    }
+    parts.push(match[0]);
+    lastIdx = bracketRegex.lastIndex;
+  }
+  if (lastIdx < phraseAnnotated.length) {
+    parts.push(annotateRemainingKanji(phraseAnnotated.slice(lastIdx)));
+  }
+  return parts.join("");
 }
 
 export function autoAnnotateFurigana(text: string): string {
