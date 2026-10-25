@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Lesson } from "@/lib/data";
 import { lessons } from "@/lib/data";
 import type { LessonProgress, ProgressSnapshot } from "@/lib/progress";
@@ -267,6 +267,19 @@ export function LessonOverview({ lesson }: { lesson: Lesson }) {
   const [saveError, setSaveError] = useState("");
   const stat = snapshot?.lessons.find(entry => entry.key === lesson.id);
   const status = chosenStatus ?? stat?.status ?? "not_started";
+  const activatedRef = useRef(false);
+
+  useEffect(() => {
+    if (signedIn && stat && stat.status === "not_started" && !chosenStatus && !activatedRef.current) {
+      activatedRef.current = true;
+      setChosenStatus("in_progress");
+      void fetch("/api/lessons/progress", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lessonKey: lesson.id, status: "in_progress" }),
+      });
+    }
+  }, [signedIn, stat, chosenStatus, lesson.id]);
 
   async function saveStatus() {
     if (!signedIn || saving) return;

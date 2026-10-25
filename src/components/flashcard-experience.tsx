@@ -8,6 +8,7 @@ import { FuriganaText } from "@/components/furigana-text";
 import { ConfettiCanvas } from "@/components/confetti";
 import { checkAnswer, type AnswerMode } from "@/lib/answer";
 import { playCorrectSound, playIncorrectSound, playVictorySound } from "@/lib/audio-feedback";
+import { lessons } from "@/lib/data";
 import { hasSupabaseConfig, supabase } from "@/lib/supabase-client";
 import type { LiveCard, LiveSession, StudySnapshot } from "@/lib/study-types";
 
@@ -70,6 +71,59 @@ function LiveFlashcards({ lessonKey }: { lessonKey?: string }) {
   const [elapsedMs, setElapsedMs] = useState(0);
   const [animClass, setAnimClass] = useState("");
   const [showConfetti, setShowConfetti] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-focus input whenever entering recall step
+  useEffect(() => {
+    if (step === "recall") {
+      const timer = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 40);
+      return () => clearTimeout(timer);
+    }
+  }, [step, index]);
+
+  // Global keyboard shortcuts (Enter to reveal, hide, and advance smoothly)
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) {
+        return;
+      }
+      const curEntry = queue[index];
+      if (e.key === "Enter" || e.key === " ") {
+        if (e.key === " ") e.preventDefault();
+        if (step === "prompt") {
+          e.preventDefault();
+          reveal();
+        } else if (step === "meaning") {
+          e.preventDefault();
+          hide();
+        } else if (step === "result") {
+          e.preventDefault();
+          if (correct && saved && !busy) {
+            advance();
+          } else if (correct && !curEntry?.retry && !saved && !busy) {
+            void rate("good");
+          } else if (!correct && !curEntry?.retry && saved) {
+            setQueue(current => [...current, { card: curEntry.card, retry: true }]);
+            setIndex(current => current + 1);
+            resetCard();
+          } else if (!correct && curEntry?.retry) {
+            setStep("recall");
+            setAnswer("");
+            setAnimClass("");
+            setRecallStartedAt(Date.now());
+          }
+        }
+      } else if (step === "result" && correct && !curEntry?.retry && !saved && !busy) {
+        if (e.key === "1") { e.preventDefault(); void rate("hard"); }
+        else if (e.key === "2") { e.preventDefault(); void rate("good"); }
+        else if (e.key === "3") { e.preventDefault(); void rate("easy"); }
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [step, correct, saved, busy, index, queue]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -232,15 +286,34 @@ function LiveFlashcards({ lessonKey }: { lessonKey?: string }) {
     }
   }
 
+  const currentLesson = lessonKey ? lessons.find(l => l.id === lessonKey) : null;
   const entry = queue[index];
+
+  async function leaveSession() {
+    if (!window.confirm("Bạn có chắc muốn rời và kết thúc phiên học này không?")) return;
+    try {
+      if (session) {
+        await fetch("/api/study/abandon", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: session.id }),
+        });
+      }
+    } catch {}
+    window.location.href = currentLesson ? `/lessons/${currentLesson.id}` : "/dashboard";
+  }
+
   if (!snapshot && !error) return <p className="muted">Đang tải Flashcard…</p>;
   if (snapshot && !snapshot.gradingReady) return <div className="card stack"><h1 className="page-title">Flashcard cá nhân</h1><p>Máy chủ chưa có <code>SUPABASE_SERVICE_ROLE_KEY</code> để chấm an toàn.</p><Link href="/flashcards?demo=1" className="btn secondary">Học thử bản demo</Link></div>;
   if (!session) return <div className="stack">
-    <div><div className="eyebrow">ÔN TẬP CÁ NHÂN</div><h1 className="page-title">Flashcard đến hạn</h1></div>
+    <div>
+      <div className="eyebrow">{currentLesson ? `BÀI ${currentLesson.number} · MINNA NO NIHONGO` : "ÔN TẬP TỔNG HỢP"}</div>
+      <h1 className="page-title">{currentLesson ? `Flashcard Bài ${currentLesson.number}` : "Flashcard đến hạn"}</h1>
+    </div>
     {error && <p role="alert" style={{ color: "var(--red)" }}>{error}</p>}
-    {snapshot?.gradingReady && snapshot.dueCount === 0 && <div className="card stack"><p className="muted">Chưa có thẻ đến hạn{lessonKey ? " trong bài này" : ""}. Hãy thêm từ vựng hoặc quay lại khi thẻ đến hạn.</p><Link href="/lessons" className="btn secondary">Mở bài học</Link></div>}
+    {snapshot?.gradingReady && snapshot.dueCount === 0 && <div className="card stack"><p className="muted">Chưa có thẻ đến hạn{currentLesson ? ` trong Bài ${currentLesson.number}` : " thuộc các bài đang học"}. Hãy thêm từ vựng hoặc quay lại khi thẻ đến hạn.</p><Link href="/lessons" className="btn secondary">Mở bài học</Link></div>}
     {snapshot?.gradingReady && snapshot.dueCount > 0 && <div className="card stack">
-      <p>{snapshot.dueCount} thẻ đến hạn{lessonKey ? " trong bài này" : ""}. Mỗi phiên học tối đa 20 thẻ.</p>
+      <p>{snapshot.dueCount} thẻ đến hạn{currentLesson ? ` trong Bài ${currentLesson.number}` : " (ngẫu nhiên các bài đang học)"}. Mỗi phiên học tối đa 20 thẻ.</p>
       <label className="stack">Chế độ trả lời<select className="input" value={mode} onChange={event => setMode(event.target.value as AnswerMode)}><option value="flexible">Flexible</option><option value="kana">Kana</option><option value="kanji">Kanji</option></select></label>
       <button className="btn" disabled={busy} onClick={() => void start()}>{busy ? "Đang bắt đầu…" : "Bắt đầu ôn"}</button>
     </div>}
@@ -250,7 +323,9 @@ function LiveFlashcards({ lessonKey }: { lessonKey?: string }) {
       {showConfetti && <ConfettiCanvas onDone={() => setShowConfetti(false)} />}
       <h1 className="page-title">Hoàn thành phiên học</h1>
       <p className="muted">Toàn bộ thẻ trong phiên đã được ghi nhận vào Supabase!</p>
-      <Link className="btn" href="/dashboard">Về tổng quan</Link>
+      <Link className="btn" href={currentLesson ? `/lessons/${currentLesson.id}` : "/dashboard"}>
+        {currentLesson ? `Về Bài ${currentLesson.number}` : "Về tổng quan"}
+      </Link>
     </div>
   );
   if (!entry) return <div className="card stack"><h1 className="page-title">Các thẻ đã hoàn tất</h1><p className="muted">Xác nhận kết thúc phiên học.</p>{error && <p role="alert">{error}</p>}<button className="btn" disabled={busy} onClick={() => void finish()}>Hoàn tất phiên</button></div>;
@@ -259,7 +334,15 @@ function LiveFlashcards({ lessonKey }: { lessonKey?: string }) {
   const percent = Math.round(index / queue.length * 100);
   return <div className="stack">
     {showConfetti && <ConfettiCanvas onDone={() => setShowConfetti(false)} />}
-    <div className="lesson"><div><div className="eyebrow">{entry.retry ? "LUYỆN LẠI" : "FLASHCARD CÁ NHÂN"}</div><h1 className="page-title">Luyện nhớ chủ động</h1></div><Link className="tag" href="/dashboard" onClick={e => { if (!window.confirm("Bạn có chắc muốn rời phiên học hiện tại?")) e.preventDefault() }}>Rời phiên</Link></div>
+    <div className="lesson">
+      <div>
+        <div className="eyebrow">{entry.retry ? "LUYỆN LẠI" : currentLesson ? `BÀI ${currentLesson.number}` : "FLASHCARD CÁ NHÂN"}</div>
+        <h1 className="page-title">{currentLesson ? `Flashcard Bài ${currentLesson.number}` : "Luyện nhớ chủ động"}</h1>
+      </div>
+      <button type="button" className="tag" style={{ cursor: "pointer", border: "none" }} onClick={() => void leaveSession()}>
+        Rời phiên
+      </button>
+    </div>
     <div className="lesson"><span className="muted">Thẻ {index + 1} / {queue.length}</span><span className="muted">{session.mode.toUpperCase()} · Nhật → nghĩa → gõ lại</span></div>
     <div className="progress" role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100} aria-label="Tiến độ phiên học"><i style={{ width: `${percent}%` }} /></div>
     <article className={`card flashcard ${animClass}`}>
@@ -282,8 +365,31 @@ function LiveFlashcards({ lessonKey }: { lessonKey?: string }) {
         <p className="muted">Dùng Japanese IME. Từ gốc đã được ẩn.</p>
         <form onSubmit={event => { event.preventDefault(); void submit() }} style={{ width: "100%" }}>
           <label htmlFor="live-recall" className="eyebrow">ĐÁP ÁN CỦA BẠN</label>
-          <input id="live-recall" className="input jp" lang="ja" autoComplete="off" autoCapitalize="off" value={answer} onChange={event => { setAnswer(event.target.value); setAnimClass(""); }} onKeyDown={event => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault() }} />
-          <button className="btn" style={{ width: "100%", marginTop: 12 }} disabled={busy || !answer.trim()}>{busy ? "Đang kiểm tra…" : "Kiểm tra đáp án"}</button>
+          <input
+            ref={inputRef}
+            id="live-recall"
+            className="input jp"
+            lang="ja"
+            autoFocus
+            autoComplete="off"
+            autoCapitalize="off"
+            value={answer}
+            onChange={event => { setAnswer(event.target.value); setAnimClass(""); }}
+            onKeyDown={event => {
+              if (event.key === "Enter") {
+                if (event.nativeEvent.isComposing || (event.nativeEvent as unknown as { isComposing?: boolean }).isComposing || event.keyCode === 229) {
+                  return;
+                }
+                event.preventDefault();
+                if (answer.trim() && !busy) {
+                  void submit();
+                }
+              }
+            }}
+          />
+          <button className="btn" style={{ width: "100%", marginTop: 12 }} disabled={busy || !answer.trim()}>
+            {busy ? "Đang kiểm tra…" : "Kiểm tra đáp án (hoặc nhấn Enter ↵)"}
+          </button>
         </form>
       </>}
       {step === "result" && <>

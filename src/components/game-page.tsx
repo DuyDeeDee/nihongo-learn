@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AuthPanel } from "@/components/auth-panel";
 import { ParticlePractice, SentenceBuilder } from "@/components/practice";
 import { FuriganaText } from "@/components/furigana-text";
@@ -42,6 +42,44 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const data = await response.json();
   if (!response.ok) throw new Error(data.error ?? "Yêu cầu không thành công.");
   return data as T;
+}
+
+function cleanRomaji(text: string): string {
+  return text.replace(/\s*\([a-zA-Z\s]{2,}\)/g, "").trim();
+}
+
+function getPromptTranslation(prompt: string): string {
+  const clean = prompt
+    .replace(/^(Sắp xếp( các từ sau thành câu hoàn chỉnh)?:?|Tạo câu:?|Dịch câu:?|Hãy sắp xếp[^:]*:?)\s*/i, "")
+    .replace(/^\((.*)\)$/, "$1")
+    .trim();
+  return clean || prompt;
+}
+
+function extractSentenceTranslation(question: GameQuestion): string | null {
+  // 1. Look for Vietnamese in parentheses inside prompt e.g. (Anh Santos cũng là nhân viên công ty)
+  const parenMatch = question.prompt.match(/\(([^)]*[a-zA-Zà-ỹÀ-Ỹ]{3,}[^)]*)\)/);
+  if (parenMatch) return parenMatch[1].trim();
+
+  // 2. For ordering, prompt itself is often the Vietnamese meaning
+  if (question.question_type === "ordering") {
+    const cleaned = getPromptTranslation(question.prompt);
+    if (/[a-zA-Zà-ỹÀ-Ỹ]/.test(cleaned)) return cleaned;
+  }
+
+  // 3. Look in explanation for quotes or "Dịch câu:"
+  if (question.explanation) {
+    const transMatch = question.explanation.match(/(?:dịch là|nghĩa là|dịch câu:?|nghĩa:?)\s*["'“]?([^"'\n”]+)["'”]?/i);
+    if (transMatch && /[a-zA-Zà-ỹÀ-Ỹ]/.test(transMatch[1])) {
+      return transMatch[1].trim();
+    }
+    const quoted = question.explanation.match(/["'“]([^"'”]{4,})["'”]/);
+    if (quoted && /[a-zA-Zà-ỹÀ-Ỹ]/.test(quoted[1])) {
+      return quoted[1].trim();
+    }
+  }
+
+  return null;
 }
 
 export function GamePage({ kind, lessonKey, demo = false }: { kind: Kind; lessonKey?: string; demo?: boolean }) {
@@ -350,6 +388,28 @@ function LessonGame({ kind, lesson, path, title }: { kind: Kind; lesson: (typeof
   }
 
   const current = questions[index];
+
+  const shuffledPositions = useMemo(() => {
+    if (!current || kind !== "ordering") return [];
+    const indices = current.options.map((_, i) => i);
+    if (indices.length <= 1) return indices;
+
+    const shuffled = [...indices];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+
+    if (shuffled.every((pos, i) => pos === i) && shuffled.length > 1) {
+      [shuffled[0], shuffled[1]] = [shuffled[1], shuffled[0]];
+    }
+    return shuffled;
+  }, [current?.id, index, kind, attemptKey]);
+
+  const cleanJapanesePrompt = current ? cleanRomaji(current.prompt) : "";
+  const promptParenTranslation = current ? current.prompt.match(/\(([^)]*[a-zA-Zà-ỹÀ-Ỹ]{3,}[^)]*)\)/)?.[1]?.trim() : null;
+  const sentenceTranslation = current ? extractSentenceTranslation(current) : null;
+
   return (
     <div className="stack">
       {showConfetti && <ConfettiCanvas onDone={() => setShowConfetti(false)} />}
@@ -399,12 +459,18 @@ function LessonGame({ kind, lesson, path, title }: { kind: Kind; lesson: (typeof
           {playing && current && (
             <section className={`card stack ${animClass}`}>
               <div className="eyebrow">CÂU {index + 1} / {questions.length}</div>
-              <h2 className="section-title jp" style={{ fontSize: 24, lineHeight: 1.8 }}>
-                <FuriganaText text={current.prompt} />
-              </h2>
 
               {kind === "ordering" ? (
                 <>
+                  <div className="card" style={{ background: "var(--surface)", borderLeft: "4.5px solid var(--blue, #2563eb)", padding: "16px 20px" }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", marginBottom: 6 }}>
+                      🇻🇳 Nghĩa câu cần tạo:
+                    </div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: "var(--ink)", lineHeight: 1.5 }}>
+                      {getPromptTranslation(current.prompt)}
+                    </div>
+                  </div>
+
                   <div className="card jp" lang="ja" style={{ minHeight: 68, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
                     {selected.length === 0 && <span className="muted" style={{ fontSize: 16 }}>Chọn các mảnh ghép bên dưới theo thứ tự đúng...</span>}
                     {selected.map((position, chosenIndex) => (
@@ -420,27 +486,31 @@ function LessonGame({ kind, lesson, path, title }: { kind: Kind; lesson: (typeof
                           setAnimClass("");
                         }}
                       >
-                        <FuriganaText text={current.options[position]} /> ✕
+                        <FuriganaText text={current.options[position]} enableTooltip /> ✕
                       </button>
                     ))}
                   </div>
+
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                    {current.options.map((token, position) => (
-                      <button
-                        className="btn secondary jp"
-                        type="button"
-                        key={position}
-                        aria-label={`Chọn ${token}`}
-                        style={{ fontSize: 18 }}
-                        disabled={selected.includes(position) || Boolean(feedback)}
-                        onClick={() => {
-                          setSelected(values => [...values, position]);
-                          setAnimClass("");
-                        }}
-                      >
-                        <FuriganaText text={token} />
-                      </button>
-                    ))}
+                    {shuffledPositions.map(position => {
+                      const token = current.options[position];
+                      return (
+                        <button
+                          className="btn secondary jp"
+                          type="button"
+                          key={position}
+                          aria-label={`Chọn ${token}`}
+                          style={{ fontSize: 18 }}
+                          disabled={selected.includes(position) || Boolean(feedback)}
+                          onClick={() => {
+                            setSelected(values => [...values, position]);
+                            setAnimClass("");
+                          }}
+                        >
+                          <FuriganaText text={token} enableTooltip />
+                        </button>
+                      );
+                    })}
                   </div>
                   <button
                     className="btn secondary"
@@ -453,8 +523,21 @@ function LessonGame({ kind, lesson, path, title }: { kind: Kind; lesson: (typeof
                 </>
               ) : (
                 <>
-                  <div className="jp" lang="ja" style={{ fontSize: 28, lineHeight: 1.8 }}>
-                    <FuriganaText text={current.prompt.replace("＿", choice ? `[${choice}]` : "＿")} />
+                  <div className="card stack" style={{ background: "var(--surface)", padding: "20px 24px" }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>
+                      🇯🇵 Chọn trợ từ thích hợp vào chỗ trống ＿ :
+                    </div>
+                    <div className="jp" lang="ja" style={{ fontSize: 32, lineHeight: 2.2 }}>
+                      <FuriganaText
+                        text={cleanJapanesePrompt.replace("＿", choice ? `[${choice}]` : "＿")}
+                        enableTooltip
+                      />
+                    </div>
+                    {promptParenTranslation && (
+                      <div style={{ fontSize: 15, color: "var(--muted)", fontStyle: "italic", marginTop: 4 }}>
+                        💡 Nghĩa gợi ý: {promptParenTranslation}
+                      </div>
+                    )}
                   </div>
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                     {current.options.map(option => (
@@ -476,17 +559,62 @@ function LessonGame({ kind, lesson, path, title }: { kind: Kind; lesson: (typeof
               )}
 
               {feedback && (
-                <div role="status" aria-live="polite" className="stack" style={{ padding: "14px 18px", borderRadius: 12, background: feedback.correct ? "var(--green-light)" : "var(--red-light)" }}>
-                  <strong style={{ color: feedback.correct ? "var(--green)" : "var(--red)", fontSize: 17 }}>
-                    {feedback.correct ? "✓ Chính xác!" : "✗ Chưa đúng."}
-                  </strong>
-                  <span>
-                    Đáp án: <FuriganaText text={kind === "ordering" ? feedback.acceptedAnswers.join(" ") : feedback.acceptedAnswers.join(" / ")} />
-                  </span>
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="stack"
+                  style={{
+                    padding: "16px 20px",
+                    borderRadius: 12,
+                    background: feedback.correct ? "var(--green-light)" : "var(--red-light)",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <strong style={{ color: feedback.correct ? "var(--green)" : "var(--red)", fontSize: 18 }}>
+                      {feedback.correct ? "✓ Chính xác!" : "✗ Chưa đúng."}
+                    </strong>
+                  </div>
+
+                  <div style={{ fontSize: 18, lineHeight: 2.15 }}>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: "var(--muted)", marginRight: 8, textTransform: "uppercase" }}>
+                      Đáp án đúng:
+                    </span>
+                    <span className="jp" lang="ja">
+                      <FuriganaText
+                        text={
+                          kind === "ordering"
+                            ? feedback.acceptedAnswers.join(" ")
+                            : cleanJapanesePrompt.replace("＿", feedback.acceptedAnswers[0])
+                        }
+                        enableTooltip
+                      />
+                    </span>
+                  </div>
+
+                  {sentenceTranslation && (
+                    <div
+                      style={{
+                        marginTop: 6,
+                        padding: "12px 16px",
+                        borderRadius: 10,
+                        background: "rgba(255, 255, 255, 0.88)",
+                        borderLeft: "4px solid var(--blue, #2563eb)",
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+                      }}
+                    >
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                        🇻🇳 Dịch câu hoàn chỉnh:
+                      </div>
+                      <div style={{ fontSize: 17, fontWeight: 600, color: "var(--ink)", marginTop: 3 }}>
+                        {sentenceTranslation}
+                      </div>
+                    </div>
+                  )}
+
                   {feedback.explanation && (
-                    <p className="muted" style={{ whiteSpace: "pre-wrap", margin: "4px 0 0" }}>
-                      <FuriganaText text={feedback.explanation} />
-                    </p>
+                    <div className="muted" style={{ whiteSpace: "pre-wrap", marginTop: 4, fontSize: 14.5, lineHeight: 1.6 }}>
+                      <FuriganaText text={feedback.explanation} enableTooltip />
+                    </div>
                   )}
                 </div>
               )}
@@ -648,19 +776,19 @@ function LessonGame({ kind, lesson, path, title }: { kind: Kind; lesson: (typeof
                       <article className="card stack card-interactive" key={q.id}>
                         <div className="lesson">
                           <strong className="jp" style={{ fontSize: 18 }}>
-                            Câu {position + 1}: <FuriganaText text={q.prompt} />
+                            Câu {position + 1}: <FuriganaText text={cleanRomaji(q.prompt)} enableTooltip />
                           </strong>
                         </div>
                         <p className="muted jp" style={{ margin: 0 }}>
                           Mảnh/lựa chọn: {q.options.map((opt, i) => (
                             <span key={i}>
                               {i > 0 && " · "}
-                              <FuriganaText text={opt} />
+                              <FuriganaText text={opt} enableTooltip />
                             </span>
                           ))}
                         </p>
                         <p style={{ margin: 0 }}>
-                          Đáp án: <FuriganaText text={q.accepted_answers.join(kind === "ordering" ? " → " : " / ")} />
+                          Đáp án: <FuriganaText text={q.accepted_answers.join(kind === "ordering" ? " → " : " / ")} enableTooltip />
                         </p>
                         <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
                           <button className="btn secondary" type="button" aria-label={`Sửa câu ${position + 1}`} disabled={busy} onClick={() => startEdit(q)}>Sửa</button>

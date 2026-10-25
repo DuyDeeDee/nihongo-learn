@@ -413,7 +413,7 @@ function LessonQuiz({ lesson }: { lesson: (typeof lessons)[number] }) {
               <div className="eyebrow">CÂU {index + 1} / {session.questions.length}</div>
               {question && (
                 <>
-                  <h2 className="section-title jp" style={{ fontSize: 24, lineHeight: 1.8 }}>
+                  <h2 className="section-title jp" style={{ fontSize: 30, lineHeight: 2.0 }}>
                     <FuriganaText text={question.prompt} />
                   </h2>
 

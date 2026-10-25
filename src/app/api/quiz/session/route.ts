@@ -66,6 +66,15 @@ export async function POST(request: Request) {
   }
   try {
     const lessonId = await resolveLessonId(auth.client, parsed.data.lessonKey);
+    const {data: currentProgress} = await auth.client.from("user_lesson_progress")
+      .select("status").eq("user_id", auth.user.id).eq("lesson_id", lessonId).maybeSingle();
+    if (!currentProgress || currentProgress.status === "not_started") {
+      await auth.client.from("user_lesson_progress").upsert({
+        user_id: auth.user.id,
+        lesson_id: lessonId,
+        status: "in_progress",
+      }, {onConflict: "user_id,lesson_id"});
+    }
     const {data: active, error: activeError} = await auth.client.from("study_sessions")
       .select("id").eq("user_id", auth.user.id).eq("lesson_id", lessonId)
       .eq("session_type", "quiz").eq("status", "active")

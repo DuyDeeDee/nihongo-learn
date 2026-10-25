@@ -81,16 +81,37 @@ export async function GET(request: Request) {
   if (!auth) return failure("Vui lòng đăng nhập để ôn tập.", 401);
   try {
     const {client, user} = auth;
-    const {data: active, error: activeError} = await client.from("study_sessions")
-      .select("id").eq("user_id", user.id).eq("session_type", "flashcard")
-      .eq("status", "active").order("started_at", {ascending: false}).limit(1).maybeSingle();
-    if (activeError) throw activeError;
-    if (active) return snapshot(await loadSession(client, user.id, active.id), 0);
     const key = new URL(request.url).searchParams.get("lessonKey");
     const lessonId = await resolveLesson(client, key);
+
+    // Look for active session matching the requested lesson (or general review if null)
+    let activeQuery = client.from("study_sessions")
+      .select("id,lesson_id").eq("user_id", user.id).eq("session_type", "flashcard")
+      .eq("status", "active").order("started_at", {ascending: false});
+
+    if (lessonId) {
+      activeQuery = activeQuery.eq("lesson_id", lessonId);
+    } else {
+      activeQuery = activeQuery.is("lesson_id", null);
+    }
+
+    const {data: active, error: activeError} = await activeQuery.limit(1).maybeSingle();
+    if (activeError) throw activeError;
+    if (active) return snapshot(await loadSession(client, user.id, active.id), 0);
+
     let query = client.from("flashcards").select("id", {head: true, count: "exact"})
       .eq("user_id", user.id).is("suspended_at", null).lte("due_at", new Date().toISOString());
-    if (lessonId) query = query.eq("lesson_id", lessonId);
+
+    if (lessonId) {
+      query = query.eq("lesson_id", lessonId);
+    } else {
+      // General review: count due cards only from lessons in progress or completed
+      const {data: activeLessons} = await client.from("user_lesson_progress")
+        .select("lesson_id").eq("user_id", user.id).in("status", ["in_progress", "completed"]);
+      if (activeLessons && activeLessons.length > 0) {
+        query = query.in("lesson_id", activeLessons.map(l => l.lesson_id));
+      }
+    }
     const {count, error} = await query;
     if (error) throw error;
     return snapshot(null, count ?? 0);
@@ -107,6 +128,20 @@ export async function POST(request: Request) {
   if (!parsed.success) return failure("Thông tin bắt đầu phiên học không hợp lệ.", 400);
   try {
     const lessonId = await resolveLesson(auth.client, parsed.data.lessonKey ?? null);
+
+    // Auto mark lesson as in_progress when starting its flashcard session
+    if (lessonId && parsed.data.lessonKey) {
+      const {data: currentProgress} = await auth.client.from("user_lesson_progress")
+        .select("status").eq("user_id", auth.user.id).eq("lesson_id", lessonId).maybeSingle();
+      if (!currentProgress || currentProgress.status === "not_started") {
+        await auth.client.from("user_lesson_progress").upsert({
+          user_id: auth.user.id,
+          lesson_id: lessonId,
+          status: "in_progress",
+        }, {onConflict: "user_id,lesson_id"});
+      }
+    }
+
     const {data: sessionId, error} = await auth.client.rpc("start_flashcard_session", {
       p_lesson_id: lessonId, p_answer_mode: parsed.data.mode,
     });

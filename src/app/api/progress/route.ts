@@ -67,7 +67,7 @@ export async function GET() {
       const grammarCount = grammarCounts.get(row.id) ?? 0;
       return {key: `minna-2e-${volume}-${row.lesson_number}`, number: row.lesson_number,
         volume, vocabularyCount, grammarCount,
-        status: saved?.status ?? (vocabularyCount + grammarCount > 0 ? "in_progress" : "not_started"),
+        status: saved?.status ?? "not_started",
         quizBestScore: saved?.quiz_best_score ?? null};
     }).sort((a, b) => a.number - b.number);
     const cardById = new Map(cards.map(card => [card.id, card]));

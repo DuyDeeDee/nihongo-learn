@@ -402,23 +402,23 @@ export function VocabularyPage({ lesson }: { lesson: Lesson }) {
                   <article className="card stack card-interactive" key={item.id}>
                     <div className="lesson">
                       <div>
-                        <strong className="jp" lang="ja" style={{ fontSize: 26, lineHeight: 1.8 }}>
+                        <strong className="jp" lang="ja" style={{ fontSize: 32, lineHeight: 2.0 }}>
                           <FuriganaText japanese={item.japanese} kana={item.kana} />
                         </strong>
                         {item.kana && item.japanese !== item.kana && (
-                          <span className="jp muted" lang="ja" style={{ fontSize: 16 }}> · {item.kana}</span>
+                          <span className="jp muted" lang="ja" style={{ fontSize: 18 }}> · {item.kana}</span>
                         )}
                       </div>
                       {item.part_of_speech && <span className="tag">{item.part_of_speech}</span>}
                     </div>
-                    <div style={{ fontSize: 17, fontWeight: 500 }}>{item.meaning}</div>
+                    <div style={{ fontSize: 18, fontWeight: 500 }}>{item.meaning}</div>
                     {item.example_japanese && (
-                      <p className="jp" lang="ja" style={{ margin: 0, fontSize: 17, lineHeight: 1.8 }}>
+                      <p className="jp" lang="ja" style={{ margin: 0, fontSize: 22, lineHeight: 2.1 }}>
                         <FuriganaText text={item.example_japanese} />
                       </p>
                     )}
                     {item.example_meaning && (
-                      <p className="muted" style={{ margin: 0 }}>{item.example_meaning}</p>
+                      <p className="muted" style={{ margin: 0, fontSize: 16.5, lineHeight: 1.6 }}>{item.example_meaning}</p>
                     )}
                     {item.source_note && <small className="muted">Nguồn: {item.source_note}</small>}
                     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 4 }}>

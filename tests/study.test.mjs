@@ -4,6 +4,8 @@ import {checkAnswer} from "../src/lib/answer.ts";
 import {scheduleReview, Rating} from "../src/lib/srs.ts";
 import {studyDayKey, streakFromDays} from "../src/lib/progress.ts";
 import {gradeQuizAnswer} from "../src/lib/quiz-domain.ts";
+import {autoAnnotateFurigana} from "../src/lib/furigana-dictionary.ts";
+import {cleanJapaneseForSpeech} from "../src/lib/speech.ts";
 
 test("Kana accepts hiragana and katakana, but not kanji", () => {
   assert.equal(checkAnswer("カタカナ", ["かたかな", "片仮名"], "kana"), true);
@@ -41,3 +43,27 @@ test("Quiz grading normalizes typed answers and rejects choices outside the bank
   assert.equal(gradeQuizAnswer({question_type: "multiple_choice", options: ["nước", "lửa"], accepted_answers: ["nước"]}, "nước"), true);
   assert.equal(gradeQuizAnswer({question_type: "multiple_choice", options: ["nước", "lửa"], accepted_answers: ["nước"]}, "NƯỚC"), false);
 });
+
+test("autoAnnotateFurigana annotates verb conjugations and leaves existing brackets intact", () => {
+  assert.equal(autoAnnotateFurigana("書かないでください"), "[書]{か}かないでください");
+  assert.equal(autoAnnotateFurigana("薬を飲まなければなりません"), "[薬]{くすり}を[飲]{の}まなければなりません");
+  assert.equal(autoAnnotateFurigana("ここで [写真]{しゃしん}を 撮らないで ください。"), "ここで [写真]{しゃしん}を [撮]{と}らないで ください。");
+});
+
+test("cleanJapaneseForSpeech strips bracket tokens for natural TTS", () => {
+  assert.equal(cleanJapaneseForSpeech("[写真]{しゃしん}を [撮]{と}らないで ください。"), "写真を 撮らないで ください。");
+  assert.equal(cleanJapaneseForSpeech("～[食]{た}べない"), "食べない");
+});
+
+test("Tilde and wave dash prefix/suffix normalization allows typing with or without ~", () => {
+  assert.equal(checkAnswer("さん", ["～さん"], "flexible"), true);
+  assert.equal(checkAnswer("～さん", ["～さん"], "flexible"), true);
+  assert.equal(checkAnswer("〜さん", ["～さん"], "flexible"), true);
+  assert.equal(checkAnswer("~さん", ["～さん"], "flexible"), true);
+  assert.equal(checkAnswer("さん", ["～さん"], "kana"), true);
+  assert.equal(checkAnswer("じん", ["～人", "～じん"], "kana"), true);
+  assert.equal(checkAnswer("人", ["～人", "～じん"], "kanji"), true);
+  assert.equal(checkAnswer("こちらはさんです", ["こちらは ～さんです"], "flexible"), true);
+});
+
+

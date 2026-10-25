@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { FuriganaText } from "@/components/furigana-text";
 import { ConfettiCanvas } from "@/components/confetti";
@@ -36,11 +36,52 @@ export function FlashcardSession() {
   const [note, setNote] = useState("");
   const [animClass, setAnimClass] = useState("");
   const [showConfetti, setShowConfetti] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const current = queue[index];
   const word = sampleWords[current];
   const done = index >= queue.length;
   const percent = done ? 100 : Math.round((index / queue.length) * 100);
+
+  useEffect(() => {
+    if (step === "recall") {
+      const timer = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 40);
+      return () => clearTimeout(timer);
+    }
+  }, [step, index]);
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) {
+        return;
+      }
+      if (e.key === "Enter" || e.key === " ") {
+        if (e.key === " ") e.preventDefault();
+        if (step === "prompt") {
+          e.preventDefault();
+          reveal();
+        } else if (step === "meaning") {
+          e.preventDefault();
+          hide();
+        } else if (step === "result") {
+          e.preventDefault();
+          if (correct && !retry && !graded.includes(current)) {
+            rate(Rating.Good);
+          } else {
+            advance();
+          }
+        }
+      } else if (step === "result" && correct && !retry && !graded.includes(current)) {
+        if (e.key === "1") { e.preventDefault(); rate(Rating.Hard); }
+        else if (e.key === "2") { e.preventDefault(); rate(Rating.Good); }
+        else if (e.key === "3") { e.preventDefault(); rate(Rating.Easy); }
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [step, correct, retry, graded, current]);
 
   const label = useMemo(
     () => (mode === "kana" ? "Kana · nhập Hiragana/Katakana" : mode === "kanji" ? "Kanji · nhập cách viết có Kanji" : "Flexible · chấp nhận Kana hoặc Kanji"),
@@ -192,18 +233,30 @@ export function FlashcardSession() {
                 ĐÁP ÁN CỦA BẠN
               </label>
               <input
+                ref={inputRef}
                 id="recall"
                 className="input jp"
                 lang="ja"
+                autoFocus
                 autoComplete="off"
                 autoCapitalize="off"
                 value={answer}
                 onChange={e => { setAnswer(e.target.value); setAnimClass(""); }}
-                onKeyDown={e => { if (e.key === "Enter" && e.nativeEvent.isComposing) e.preventDefault(); }}
+                onKeyDown={e => {
+                  if (e.key === "Enter") {
+                    if (e.nativeEvent.isComposing || (e.nativeEvent as unknown as { isComposing?: boolean }).isComposing || e.keyCode === 229) {
+                      return;
+                    }
+                    e.preventDefault();
+                    if (answer.trim()) {
+                      submit();
+                    }
+                  }
+                }}
                 placeholder="日本語で入力…"
               />
               <button className="btn" style={{ marginTop: 14, width: "100%" }} disabled={!answer.trim()}>
-                Kiểm tra đáp án
+                Kiểm tra đáp án (hoặc nhấn Enter ↵)
               </button>
             </form>
           </>

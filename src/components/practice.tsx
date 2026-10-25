@@ -42,7 +42,7 @@ export function QuizPractice() {
   return (
     <section className={`card stack ${animClass}`}>
       <div className="eyebrow">CÂU HỎI MẪU TỰ BIÊN</div>
-      <div className="jp" lang="ja" style={{ fontSize: 32, lineHeight: 1.8 }}>
+      <div className="jp" lang="ja" style={{ fontSize: 36, lineHeight: 2.0 }}>
         <FuriganaText text="今日は少し寒いです。" />
       </div>
       <p className="muted">Chọn nghĩa phù hợp với câu trên.</p>
@@ -114,7 +114,7 @@ export function SentenceBuilder() {
               setAnimClass("");
             }}
           >
-            <FuriganaText text={bank[id]} /> ✕
+            <FuriganaText text={bank[id]} enableTooltip /> ✕
           </button>
         ))}
       </div>
@@ -134,14 +134,33 @@ export function SentenceBuilder() {
               setAnimClass("");
             }}
           >
-            <FuriganaText text={word} />
+            <FuriganaText text={word} enableTooltip />
           </button>
         ))}
       </div>
       <div className="muted jp" lang="ja">
         Câu của bạn: {words.join(" ")}
       </div>
-      {checked && <Result ok={correct} />}
+      {checked && (
+        <>
+          <Result ok={correct} />
+          <div
+            style={{
+              padding: "10px 14px",
+              borderRadius: 8,
+              background: "var(--surface)",
+              borderLeft: "4px solid var(--blue, #2563eb)",
+            }}
+          >
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>
+              🇻🇳 Dịch câu:
+            </div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: "var(--ink)", marginTop: 2 }}>
+              Tôi uống cà phê.
+            </div>
+          </div>
+        </>
+      )}
       <div style={{ display: "flex", gap: 10 }}>
         <button className="btn" type="button" disabled={selected.length !== answer.length} onClick={verify}>
           Kiểm tra câu
@@ -182,9 +201,9 @@ export function ParticlePractice() {
     <section className={`card stack ${animClass}`}>
       <div className="eyebrow">LUYỆN TRỢ TỪ · CÂU MẪU TỰ BIÊN</div>
       <p className="muted">Chọn trợ từ phù hợp để hoàn thành câu.</p>
-      <div className="jp" lang="ja" style={{ fontSize: 32, lineHeight: 1.8 }}>
+      <div className="jp" lang="ja" style={{ fontSize: 36, lineHeight: 2.0 }}>
         きょう <strong style={{ color: "var(--red)", textDecoration: "underline" }}>{choice || "＿"}</strong>{" "}
-        <FuriganaText text="あめがふっています。" />
+        <FuriganaText text="あめがふっています。" enableTooltip />
       </div>
       <div style={{ display: "flex", gap: 10 }}>
         {["は", "を", "で"].map(value => (
@@ -206,7 +225,26 @@ export function ParticlePractice() {
           </button>
         ))}
       </div>
-      {checked && <Result ok={choice === "は"} />}
+      {checked && (
+        <>
+          <Result ok={choice === "は"} />
+          <div
+            style={{
+              padding: "10px 14px",
+              borderRadius: 8,
+              background: "var(--surface)",
+              borderLeft: "4px solid var(--blue, #2563eb)",
+            }}
+          >
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>
+              🇻🇳 Dịch câu:
+            </div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: "var(--ink)", marginTop: 2 }}>
+              Hôm nay trời đang mưa.
+            </div>
+          </div>
+        </>
+      )}
       <button className="btn" type="button" disabled={!choice} onClick={verify}>
         Kiểm tra trợ từ
       </button>

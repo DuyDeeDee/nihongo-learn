@@ -10,7 +10,12 @@ export type QuizQuestion = {
 };
 
 export function normalizeQuizAnswer(value: string) {
-  return value.normalize("NFKC").trim().replace(/\s+/gu, " ").toLocaleLowerCase();
+  return value
+    .normalize("NFKC")
+    .trim()
+    .replace(/[~〜～\u301C\uFF5E\u007E]/g, "")
+    .replace(/\s+/gu, " ")
+    .toLocaleLowerCase();
 }
 
 export function gradeQuizAnswer(question: Pick<QuizQuestion, "question_type" | "options" | "accepted_answers">, answer: string) {
