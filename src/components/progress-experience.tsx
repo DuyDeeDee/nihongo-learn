@@ -61,26 +61,34 @@ export function ProgressExperience({ view }: { view: View }) {
     return () => { active = false; };
   }, [userId]);
 
-  const title = view === "dashboard" ? "Tổng quan" : view === "progress" ? "Tiến độ" : "Lỗi cần luyện";
+  const title = view === "dashboard" ? "Hôm nay" : view === "progress" ? "Tiến độ" : "Lỗi cần luyện";
   if (!hasSupabaseConfig || (authReady && !userId)) return (
-    <div className="stack">
-      <div>
-        <div className="eyebrow">BẢN DEMO</div>
-        <h1 className="page-title">{title}</h1>
-        <p className="muted">Đăng nhập để xem số liệu đã lưu. Bản demo không đồng bộ qua Supabase.</p>
-      </div>
+    <div className="stack" style={{ gap: 24 }}>
+      <section className="card-hero-quest stack" style={{ gap: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span className="badge-streak">⭐ Trải nghiệm Demo</span>
+          <span className="muted" style={{ fontSize: 13 }}>50 Bài Minna no Nihongo</span>
+        </div>
+        <div>
+          <h1 className="page-title" style={{ margin: "4px 0 8px" }}>Bắt đầu hành trình tiếng Nhật</h1>
+          <p className="muted" style={{ margin: 0, fontSize: 16 }}>
+            Học từ vựng, mẫu ngữ pháp và rèn luyện phản xạ với 50 bài chuẩn. Đăng nhập bên dưới để lưu chuỗi học 🔥 và tiến độ lâu dài trên Cloud.
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 4 }}>
+          <Link className="btn" href="/flashcards?demo=1">🚀 Thử Flashcard demo</Link>
+          <Link className="btn secondary" href="/lessons">📚 Xem 50 bài học</Link>
+        </div>
+      </section>
+
       {view === "dashboard" && (
         <div className="grid grid-3">
-          <article className="card card-interactive stack"><div className="eyebrow">CHUỖI HỌC · DEMO</div><strong className="big-number">4 ngày</strong></article>
-          <article className="card card-interactive stack"><div className="eyebrow">THẺ ĐẾN HẠN · DEMO</div><strong className="big-number">12 thẻ</strong></article>
-          <article className="card card-interactive stack"><div className="eyebrow">TIẾN ĐỘ · DEMO</div><strong className="big-number">0 / 50 bài</strong></article>
+          <article className="card card-quest stack"><div className="eyebrow">CHUỖI HỌC · DEMO</div><strong className="big-number" style={{ color: "#ea580c" }}>4 ngày</strong><span className="muted" style={{ fontSize: 13 }}>Tự động ghi nhận khi đăng nhập</span></article>
+          <article className="card card-quest stack"><div className="eyebrow">THẺ ĐẾN HẠN · DEMO</div><strong className="big-number" style={{ color: "var(--red)" }}>12 thẻ</strong><span className="muted" style={{ fontSize: 13 }}>Thuật toán FSRS sắp xếp</span></article>
+          <article className="card card-quest stack"><div className="eyebrow">TIẾN ĐỘ · DEMO</div><strong className="big-number" style={{ color: "var(--blue)" }}>0 / 50 bài</strong><span className="muted" style={{ fontSize: 13 }}>Level 1 · Minna no Nihongo</span></article>
         </div>
       )}
       {hasSupabaseConfig && <AuthPanel />}
-      <div className="grid grid-2">
-        <Link className="btn" href="/flashcards?demo=1">Thử Flashcard demo</Link>
-        <Link className="btn secondary" href="/lessons">Xem 50 bài học</Link>
-      </div>
     </div>
   );
 
@@ -107,48 +115,140 @@ export function ProgressExperience({ view }: { view: View }) {
 
   if (view === "dashboard") {
     const next = snapshot.lessons.find(lesson => lesson.status !== "completed") ?? snapshot.lessons[0];
+    const isDue = snapshot.dueCount > 0;
+
     return (
-      <div className="stack" style={{ gap: 24 }}>
-        <div>
-          <div className="eyebrow">NHỊP HỌC CỦA BẠN · ĐÃ LƯU</div>
-          <h1 className="page-title">Tổng quan</h1>
-          <p className="muted">Ngày học đổi lúc {snapshot.resetHour}:00 theo múi giờ {snapshot.timezone}.</p>
-        </div>
+      <div className="stack" style={{ gap: 28 }}>
+        {/* Daily Quest Hero Card */}
+        <section className="card-hero-quest stack" style={{ gap: 18 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+            <span className="badge-streak">
+              🔥 Chuỗi {snapshot.streak} ngày liên tiếp
+            </span>
+            <span className="muted" style={{ fontSize: 13, fontWeight: 500 }}>
+              Ngày đổi lúc {snapshot.resetHour}:00 ({snapshot.timezone})
+            </span>
+          </div>
+
+          <div>
+            <h1 className="page-title" style={{ margin: "4px 0 8px", fontSize: "clamp(26px, 3.5vw, 36px)" }}>
+              {isDue ? `Hôm nay bạn có ${snapshot.dueCount} thẻ đến hạn!` : `Tiếp tục hành trình: Bài ${next?.number ?? 1}`}
+            </h1>
+            <p className="muted" style={{ fontSize: 16, margin: 0 }}>
+              {isDue
+                ? `Chỉ mất khoảng ${Math.max(2, Math.ceil(snapshot.dueCount * 0.4))} phút ôn lại để duy trì trí nhớ và chuỗi ngày học!`
+                : `Khám phá bài học mới, nạp từ vựng và luyện tập phản xạ cùng Nihongo Quest.`}
+            </p>
+          </div>
+
+          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginTop: 4 }}>
+            {isDue ? (
+              <Link className="btn" style={{ fontSize: 17, padding: "14px 28px" }} href="/review">
+                🚀 ÔN {snapshot.dueCount} THẺ NGAY
+              </Link>
+            ) : (
+              <Link className="btn" style={{ fontSize: 17, padding: "14px 28px" }} href={`/lessons/${next?.key ?? lessons[0].id}`}>
+                📖 HỌC TIẾP BÀI {next?.number ?? 1} →
+              </Link>
+            )}
+            {isDue && (
+              <Link className="btn secondary" href={`/lessons/${next?.key ?? lessons[0].id}`}>
+                Học bài {next?.number ?? 1} →
+              </Link>
+            )}
+          </div>
+        </section>
+
+        {/* Bento Mini-Stats */}
         <section className="grid grid-3">
-          <article className="card card-interactive stack">
-            <div className="eyebrow">CHUỖI HỌC</div>
-            <strong className="big-number">{snapshot.streak} ngày</strong>
-            <span className="muted">{snapshot.activeDaysLast7} ngày có luyện tập trong 7 ngày gần đây</span>
-          </article>
-          <article className="card card-interactive stack">
-            <div className="eyebrow">THẺ ĐẾN HẠN</div>
-            <strong className="big-number">{snapshot.dueCount} thẻ</strong>
-            <Link className="btn" href="/review">Bắt đầu ôn tập</Link>
-          </article>
-          <article className="card card-interactive stack">
-            <div className="eyebrow">MỤC TIÊU HÔM NAY</div>
-            <strong className="big-number">{snapshot.todayMinutes} / {snapshot.dailyGoal} phút</strong>
-            <div className="progress" role="progressbar" aria-valuenow={Math.round(Math.min(100, (snapshot.todayMinutes / snapshot.dailyGoal) * 100))} aria-valuemin={0} aria-valuemax={100} aria-label="Tiến độ mục tiêu hôm nay">
-              <i style={{ display: "block", height: "100%", background: "var(--green)", width: `${Math.min(100, (snapshot.todayMinutes / snapshot.dailyGoal) * 100)}%` }} />
+          <article className="card card-quest stack">
+            <div className="eyebrow">🔥 CHUỖI HỌC</div>
+            <strong className="big-number" style={{ color: "#ea580c" }}>{snapshot.streak} ngày</strong>
+            <div style={{ display: "flex", gap: 6, alignItems: "center", margin: "4px 0" }}>
+              {Array.from({ length: 7 }, (_, i) => {
+                const active = i < snapshot.activeDaysLast7;
+                return (
+                  <div
+                    key={i}
+                    title={active ? "Ngày có học" : "Chưa học"}
+                    style={{
+                      flex: 1,
+                      height: 8,
+                      borderRadius: 4,
+                      background: active ? "var(--green)" : "var(--line)",
+                    }}
+                  />
+                );
+              })}
             </div>
-            <small className="muted">Chỉ tính thời gian trả lời đã được ghi.</small>
+            <span className="muted" style={{ fontSize: 13 }}>
+              {snapshot.activeDaysLast7}/7 ngày có học tuần này
+            </span>
+          </article>
+
+          <article className="card card-quest stack">
+            <div className="eyebrow">🎯 MỤC TIÊU HÔM NAY</div>
+            <strong className="big-number">{snapshot.todayMinutes} / {snapshot.dailyGoal} phút</strong>
+            <div
+              className="progress"
+              role="progressbar"
+              aria-valuenow={Math.round(Math.min(100, (snapshot.todayMinutes / snapshot.dailyGoal) * 100))}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label="Tiến độ mục tiêu hôm nay"
+            >
+              <i
+                style={{
+                  display: "block",
+                  height: "100%",
+                  background: "var(--green)",
+                  width: `${Math.min(100, (snapshot.todayMinutes / snapshot.dailyGoal) * 100)}%`,
+                }}
+              />
+            </div>
+            <span className="muted" style={{ fontSize: 13 }}>
+              {snapshot.todayMinutes >= snapshot.dailyGoal ? "✓ Đã đạt chỉ tiêu ngày!" : `Còn ${Math.max(0, snapshot.dailyGoal - snapshot.todayMinutes)} phút nữa`}
+            </span>
+          </article>
+
+          <article className="card card-quest stack">
+            <div className="eyebrow">🏆 LỘ TRÌNH N5</div>
+            <strong className="big-number" style={{ color: "var(--blue)" }}>{snapshot.completedLessons} / 50 bài</strong>
+            <span className="muted" style={{ fontSize: 13 }}>
+              {snapshot.flashcardCount} thẻ SRS trong bộ nhớ
+            </span>
+            <div style={{ display: "flex", gap: 8, marginTop: "auto" }}>
+              <Link className="tag" href="/progress" style={{ fontSize: 12 }}>Xem bảng tiến độ →</Link>
+            </div>
           </article>
         </section>
+
+        {/* Quick Resume & Mistake Practice */}
         <section className="grid grid-2">
-          <article className="card card-interactive stack">
-            <div className="eyebrow">HỌC TIẾP</div>
+          <article className="card card-quest stack">
+            <div className="eyebrow">BÀI ĐANG HỌC</div>
             <h2 className="section-title">Bài {next?.number ?? 1} · Volume {next?.volume ?? 1}</h2>
-            <span className="muted">{next?.vocabularyCount ?? 0} từ vựng · {next?.grammarCount ?? 0} mẫu ngữ pháp</span>
-            <Link className="btn" href={`/lessons/${next?.key ?? lessons[0].id}`}>Mở bài học →</Link>
+            <span className="muted">
+              {next?.vocabularyCount ?? 0} từ vựng · {next?.grammarCount ?? 0} mẫu ngữ pháp
+            </span>
+            <Link className="btn secondary" href={`/lessons/${next?.key ?? lessons[0].id}`} style={{ marginTop: "auto" }}>
+              Mở nội dung bài {next?.number ?? 1} →
+            </Link>
           </article>
-          <article className="card card-interactive stack">
-            <div className="eyebrow">LỘ TRÌNH</div>
-            <strong className="big-number">{snapshot.completedLessons} / 50 bài</strong>
-            <span className="muted">{snapshot.mistakes.length} thẻ có lần ôn gần nhất bị sai</span>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 4 }}>
-              <Link className="btn secondary" href="/progress">Xem tiến độ</Link>
-              <Link className="btn secondary" href="/review/mistakes">Luyện lỗi</Link>
-            </div>
+
+          <article className="card card-quest stack">
+            <div className="eyebrow">LỖI CẦN LUYỆN</div>
+            <h2 className="section-title">{snapshot.mistakes.length} thẻ cần củng cố</h2>
+            <span className="muted">
+              Các thẻ có lần trả lời gần nhất bị sai, cần ôn lại để lấy lại độ nhớ.
+            </span>
+            <Link
+              className="btn secondary"
+              href="/review/mistakes"
+              style={{ marginTop: "auto" }}
+            >
+              {snapshot.mistakes.length > 0 ? "Bắt đầu luyện lỗi →" : "Xem danh sách lỗi"}
+            </Link>
           </article>
         </section>
       </div>

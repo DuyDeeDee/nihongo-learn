@@ -58,16 +58,21 @@ export function LessonDirectory() {
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
   const stats = new Map(snapshot?.lessons.map(lesson => [lesson.key, lesson]) ?? []);
+
+  // Find the first in_progress or not completed lesson for pinned hero
+  const currentStat = snapshot?.lessons.find(l => l.status === "in_progress") ?? snapshot?.lessons.find(l => l.status !== "completed");
+  const currentLesson = currentStat ? lessons.find(l => l.id === currentStat.key) : lessons[0];
+
   const visible = lessons.filter(lesson => {
     const status = stats.get(lesson.id)?.status ?? (lesson.status === "Đang học" ? "in_progress" : "not_started");
     return (volume === "all" || String(lesson.volume) === volume) &&
       (filter === "all" || status === filter) &&
-      (!query.trim() || String(lesson.number).includes(query.trim()));
+      (!query.trim() || String(lesson.number).includes(query.trim()) || lesson.title.toLowerCase().includes(query.trim().toLowerCase()));
   });
 
   if (signedIn && !snapshot) {
     return (
-      <div className="stack">
+      <div className="stack" style={{ gap: 20 }}>
         <h1 className="page-title">50 bài học</h1>
         {error ? (
           <p className="muted" role="alert">{error}</p>
@@ -83,60 +88,169 @@ export function LessonDirectory() {
   }
 
   return (
-    <div className="stack" style={{ gap: 24 }}>
+    <div className="stack" style={{ gap: 28 }}>
       <div>
-        <div className="eyebrow">LỘ TRÌNH CỦA BẠN · EDITION 2</div>
+        <div className="eyebrow">HÀNH TRÌNH CHINH PHỤC · MINNA NO NIHONGO</div>
         <h1 className="page-title">50 bài học</h1>
-        <p className="muted">
-          Minna no Nihongo N5 (Bài 1–25) & N4 (Bài 26–50). {signedIn ? "Tiến độ học được lưu tự động trên tài khoản của bạn." : "Chế độ xem demo."}
+        <p className="muted" style={{ margin: 0, fontSize: 16 }}>
+          Volume I (N5 · Bài 1–25) và Volume II (N4 · Bài 26–50). {signedIn ? "Tiến độ học tập được lưu tự động trên tài khoản của bạn." : "Chế độ xem demo."}
         </p>
       </div>
 
-      <div className="card grid grid-3">
-        <label className="stack">
-          Volume
-          <select className="input" value={volume} onChange={event => setVolume(event.target.value)}>
-            <option value="all">Tất cả</option>
-            <option value="1">Volume I · N5 (Bài 1–25)</option>
-            <option value="2">Volume II · N4 (Bài 26–50)</option>
-          </select>
-        </label>
-        <label className="stack">
-          Trạng thái
-          <select className="input" value={filter} onChange={event => setFilter(event.target.value)}>
-            <option value="all">Tất cả</option>
-            <option value="not_started">Chưa học</option>
-            <option value="in_progress">Đang học</option>
-            <option value="completed">Hoàn thành</option>
-          </select>
-        </label>
-        <label className="stack">
-          Tìm số bài
-          <input className="input" inputMode="numeric" value={query} onChange={event => setQuery(event.target.value)} placeholder="Ví dụ: 12" />
-        </label>
+      {/* Pinned Active Lesson Card */}
+      {currentLesson && (
+        <section className="card-hero-quest stack" style={{ gap: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span className="badge-streak">📍 BÀI ĐANG HỌC DỞ</span>
+            <span className="tag" style={{ background: "var(--red)", color: "#fff", fontWeight: 700 }}>
+              Bài {currentLesson.number}
+            </span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 14 }}>
+            <div>
+              <h2 className="section-title" style={{ margin: "4px 0", fontSize: 24 }}>
+                Bài {currentLesson.number} · Volume {currentLesson.volume}
+              </h2>
+              <p className="muted" style={{ margin: 0, fontSize: 15 }}>
+                {currentStat ? `${currentStat.vocabularyCount} từ vựng · ${currentStat.grammarCount} mẫu ngữ pháp` : "Mở học liệu bài học"}
+              </p>
+            </div>
+            <Link className="btn" style={{ fontSize: 16, padding: "12px 24px" }} href={`/lessons/${currentLesson.id}`}>
+              Tiếp tục học bài này →
+            </Link>
+          </div>
+        </section>
+      )}
+
+      {/* Filter Tabs & Search */}
+      <div className="card-quest stack" style={{ gap: 16 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            className="tag"
+            style={{
+              cursor: "pointer",
+              padding: "8px 16px",
+              background: volume === "all" ? "var(--red)" : "var(--surface-alt)",
+              color: volume === "all" ? "#fff" : "inherit",
+              border: "none",
+              fontWeight: 700,
+            }}
+            onClick={() => setVolume("all")}
+          >
+            Tất cả (50 bài)
+          </button>
+          <button
+            type="button"
+            className="tag"
+            style={{
+              cursor: "pointer",
+              padding: "8px 16px",
+              background: volume === "1" ? "var(--red)" : "var(--surface-alt)",
+              color: volume === "1" ? "#fff" : "inherit",
+              border: "none",
+              fontWeight: 700,
+            }}
+            onClick={() => setVolume("1")}
+          >
+            🌟 Volume I · N5 (Bài 1–25)
+          </button>
+          <button
+            type="button"
+            className="tag"
+            style={{
+              cursor: "pointer",
+              padding: "8px 16px",
+              background: volume === "2" ? "var(--red)" : "var(--surface-alt)",
+              color: volume === "2" ? "#fff" : "inherit",
+              border: "none",
+              fontWeight: 700,
+            }}
+            onClick={() => setVolume("2")}
+          >
+            🚀 Volume II · N4 (Bài 26–50)
+          </button>
+        </div>
+
+        <div className="grid grid-2">
+          <label className="stack" style={{ gap: 6 }}>
+            <span className="muted" style={{ fontSize: 13, fontWeight: 600 }}>Lọc theo trạng thái</span>
+            <select className="input" value={filter} onChange={event => setFilter(event.target.value)}>
+              <option value="all">Tất cả trạng thái</option>
+              <option value="not_started">Chưa học</option>
+              <option value="in_progress">Đang học</option>
+              <option value="completed">Đã hoàn thành</option>
+            </select>
+          </label>
+          <label className="stack" style={{ gap: 6 }}>
+            <span className="muted" style={{ fontSize: 13, fontWeight: 600 }}>Tìm số bài</span>
+            <input className="input" inputMode="numeric" value={query} onChange={event => setQuery(event.target.value)} placeholder="Nhập số bài (ví dụ: 12)..." />
+          </label>
+        </div>
       </div>
 
       {visible.length === 0 && (
-        <div className="card">
-          <p className="muted">Không có bài nào khớp bộ lọc.</p>
+        <div className="card-quest" style={{ textAlign: "center", padding: 36 }}>
+          <p className="muted" style={{ fontSize: 16 }}>Không tìm thấy bài nào khớp với bộ lọc của bạn.</p>
+          <button className="btn secondary" type="button" onClick={() => { setVolume("all"); setFilter("all"); setQuery(""); }}>
+            Đặt lại bộ lọc
+          </button>
         </div>
       )}
 
+      {/* Quest Lesson Cards Grid */}
       <div className="grid grid-3">
         {visible.map(lesson => {
           const stat = stats.get(lesson.id);
           const status = stat?.status ?? (lesson.status === "Đang học" ? "in_progress" : "not_started");
           return (
-            <Link className="card card-interactive stack" key={lesson.id} href={`/lessons/${lesson.id}`}>
+            <Link className="card-quest stack" key={lesson.id} href={`/lessons/${lesson.id}`} style={{ position: "relative" }}>
               <div className="lesson">
-                <span className="tag">Volume {lesson.volume}</span>
-                <span className="muted" style={{ fontSize: 13, fontWeight: 600 }}>{label(status)}</span>
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 36,
+                    height: 36,
+                    borderRadius: 12,
+                    background: status === "completed" ? "var(--green)" : status === "in_progress" ? "var(--red)" : "var(--surface-alt)",
+                    color: status === "not_started" ? "var(--muted)" : "#fff",
+                    fontWeight: 800,
+                    fontSize: 15,
+                  }}
+                >
+                  {lesson.number < 10 ? `0${lesson.number}` : lesson.number}
+                </span>
+
+                <span
+                  className="tag"
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    background: status === "completed" ? "var(--green-light)" : status === "in_progress" ? "var(--red-light)" : "var(--surface-alt)",
+                    color: status === "completed" ? "var(--green)" : status === "in_progress" ? "var(--red)" : "var(--muted)",
+                  }}
+                >
+                  {label(status)}
+                </span>
               </div>
-              <h2 className="section-title">Bài {lesson.number}</h2>
-              <span className="muted">
-                {stat ? `${stat.vocabularyCount} từ · ${stat.grammarCount} mẫu ngữ pháp` : "Mở học liệu bài học"}
+
+              <div>
+                <h2 className="section-title" style={{ margin: "6px 0 2px", fontSize: 19 }}>Bài {lesson.number}</h2>
+                <span className="muted" style={{ fontSize: 13 }}>Volume {lesson.volume}</span>
+              </div>
+
+              <span className="muted" style={{ fontSize: 14 }}>
+                {stat ? `${stat.vocabularyCount} từ · ${stat.grammarCount} ngữ pháp` : "Mở học liệu bài học"}
               </span>
-              <strong style={{ color: "var(--red)", marginTop: "auto" }}>Mở bài →</strong>
+
+              <div style={{ marginTop: "auto", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span className="muted" style={{ fontSize: 12 }}>
+                  {stat?.quizBestScore !== null && stat?.quizBestScore !== undefined ? `Quiz: ${stat.quizBestScore}%` : "Chưa làm Quiz"}
+                </span>
+                <strong style={{ color: "var(--red)", fontSize: 14 }}>Vào học →</strong>
+              </div>
             </Link>
           );
         })}
@@ -176,7 +290,7 @@ export function LessonOverview({ lesson }: { lesson: Lesson }) {
 
   if (signedIn && !snapshot) {
     return (
-      <div className="stack">
+      <div className="stack" style={{ gap: 20 }}>
         <Link className="muted" href="/lessons">← Tất cả bài học</Link>
         <h1 className="page-title">Bài {lesson.number}</h1>
         {error ? (
@@ -189,79 +303,147 @@ export function LessonOverview({ lesson }: { lesson: Lesson }) {
   }
 
   return (
-    <div className="stack" style={{ gap: 24 }}>
-      <Link className="muted" href="/lessons">← Tất cả bài học</Link>
-      <div>
-        <div className="eyebrow">MINNA NO NIHONGO · VOLUME {lesson.volume}</div>
-        <h1 className="page-title">Bài {lesson.number}</h1>
-        <p className="muted">
-          {signedIn ? "Học liệu và tiến độ của bạn được đồng bộ tự động." : "Bạn đang xem bản demo; đăng nhập để lưu học liệu."}
-        </p>
-      </div>
+    <div className="stack" style={{ gap: 28 }}>
+      <Link className="muted" href="/lessons" style={{ fontWeight: 600 }}>← Quay lại danh sách 50 bài</Link>
 
-      {stat && (
-        <div className="card stack">
-          <div className="lesson">
-            <div>
-              <div className="eyebrow">TIẾN ĐỘ BÀI</div>
-              <strong style={{ fontSize: 20 }}>{label(status)}</strong>
-            </div>
-            <span className="muted" style={{ fontSize: 15 }}>
-              Quiz tốt nhất: {stat.quizBestScore === null ? "Chưa làm" : `${stat.quizBestScore}%`}
-            </span>
-          </div>
-          {signedIn && (
-            <div className="lesson">
-              <label className="stack" style={{ flex: 1, minWidth: 200 }}>
-                Đánh dấu trạng thái
-                <select className="input" value={status} onChange={event => setChosenStatus(event.target.value as LessonProgress["status"])}>
-                  <option value="not_started">Chưa học</option>
-                  <option value="in_progress">Đang học</option>
-                  <option value="completed">Hoàn thành</option>
-                </select>
-              </label>
-              <button className="btn secondary" type="button" disabled={saving} onClick={() => void saveStatus()} style={{ alignSelf: "flex-end" }}>
-                {saving ? "Đang lưu…" : "Lưu trạng thái"}
-              </button>
-            </div>
-          )}
-          {notice && <p role="status" style={{ color: "var(--green)" }}>{notice}</p>}
-          {saveError && <p role="alert" style={{ color: "var(--red)" }}>{saveError}</p>}
+      {/* Header Lesson Hero Card */}
+      <section className="card-hero-quest stack" style={{ gap: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span className="badge-streak">MINNA NO NIHONGO · VOLUME {lesson.volume}</span>
+          <span
+            className="tag"
+            style={{
+              background: status === "completed" ? "var(--green)" : status === "in_progress" ? "var(--red)" : "var(--surface-alt)",
+              color: status === "not_started" ? "inherit" : "#fff",
+              fontWeight: 700,
+            }}
+          >
+            {label(status)}
+          </span>
         </div>
-      )}
 
-      <section className="grid grid-2">
-        <Link className="card card-interactive stack" href={`/lessons/${lesson.id}/vocabulary`}>
-          <span className="tag">01 · TỪ VỰNG</span>
-          <h2 className="section-title">Từ vựng</h2>
-          <p className="muted">
-            {stat ? `${stat.vocabularyCount} từ vựng kèm cách đọc furigana` : "Xem và quản lý từ vựng của bài này."}
+        <div>
+          <h1 className="page-title" style={{ margin: "4px 0 8px" }}>Bài {lesson.number}</h1>
+          <p className="muted" style={{ margin: 0, fontSize: 16 }}>
+            {stat ? `${stat.vocabularyCount} từ vựng · ${stat.grammarCount} mẫu ngữ pháp · Điểm Quiz cao nhất: ${stat.quizBestScore === null ? "Chưa làm" : `${stat.quizBestScore}%`}` : "Học liệu và tiến độ của bạn được đồng bộ tự động."}
           </p>
-          <strong style={{ color: "var(--red)" }}>Mở từ vựng →</strong>
-        </Link>
-        <Link className="card card-interactive stack" href={`/lessons/${lesson.id}/grammar`}>
-          <span className="tag">02 · NGỮ PHÁP</span>
-          <h2 className="section-title">Ngữ pháp</h2>
-          <p className="muted">
-            {stat ? `${stat.grammarCount} mẫu ngữ pháp và câu ví dụ` : "Xem và quản lý mẫu ngữ pháp của bài này."}
-          </p>
-          <strong style={{ color: "var(--red)" }}>Mở ngữ pháp →</strong>
-        </Link>
+        </div>
+
+        {signedIn && (
+          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginTop: 4 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 600 }}>
+              Đổi trạng thái:
+              <select className="input" style={{ width: "auto", padding: "8px 12px" }} value={status} onChange={event => setChosenStatus(event.target.value as LessonProgress["status"])}>
+                <option value="not_started">Chưa học</option>
+                <option value="in_progress">Đang học</option>
+                <option value="completed">Đã hoàn thành</option>
+              </select>
+            </label>
+            <button className="btn secondary" type="button" disabled={saving} onClick={() => void saveStatus()} style={{ minHeight: 38, padding: "6px 14px" }}>
+              {saving ? "Đang lưu…" : "Lưu trạng thái"}
+            </button>
+          </div>
+        )}
+        {notice && <p role="status" style={{ color: "var(--green)", margin: 0 }}>{notice}</p>}
+        {saveError && <p role="alert" style={{ color: "var(--red)", margin: 0 }}>{saveError}</p>}
       </section>
 
-      <div className="grid grid-3">
-        <Link className="btn" href={`/flashcards?lesson=${lesson.id}`}>
-          Flashcard bài này
-        </Link>
-        <Link className="btn secondary" href={`/quiz?lesson=${lesson.id}`}>
-          Quiz bài này
-        </Link>
-        <Link className="btn secondary" href={`/games/sentence-builder?lesson=${lesson.id}`}>
-          Sentence Builder
-        </Link>
-        <Link className="btn secondary" href={`/games/particle-master?lesson=${lesson.id}`}>
-          Particle Master
-        </Link>
+      {/* Trạm 1: Nạp kiến thức */}
+      <div className="stack" style={{ gap: 12 }}>
+        <div className="eyebrow" style={{ color: "var(--blue)", display: "flex", alignItems: "center", gap: 6 }}>
+          <span>📖</span> TRẠM 1 · NẠP KIẾN THỨC BÀI HỌC
+        </div>
+        <div className="grid grid-2">
+          <Link className="card-quest stack" href={`/lessons/${lesson.id}/vocabulary`}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span className="tag" style={{ background: "var(--blue-light)", color: "var(--blue)", fontWeight: 700 }}>01 · TỪ VỰNG</span>
+              <span className="muted" style={{ fontSize: 13 }}>{stat ? `${stat.vocabularyCount} từ` : "Chi tiết"}</span>
+            </div>
+            <h2 className="section-title">Kho từ vựng</h2>
+            <p className="muted" style={{ margin: 0 }}>
+              Từ vựng kèm Furigana, chữ Hán Kanji, âm đọc Hiragana và giải nghĩa tiếng Việt chuẩn.
+            </p>
+            <strong style={{ color: "var(--blue)", marginTop: "auto" }}>Mở danh sách từ vựng →</strong>
+          </Link>
+
+          <Link className="card-quest stack" href={`/lessons/${lesson.id}/grammar`}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span className="tag" style={{ background: "#fef08a", color: "#ca8a04", fontWeight: 700 }}>02 · NGỮ PHÁP</span>
+              <span className="muted" style={{ fontSize: 13 }}>{stat ? `${stat.grammarCount} mẫu` : "Chi tiết"}</span>
+            </div>
+            <h2 className="section-title">Mẫu câu & Ngữ pháp</h2>
+            <p className="muted" style={{ margin: 0 }}>
+              Cấu trúc ngữ pháp, quy tắc kết hợp và các câu hội thoại ví dụ thực tế.
+            </p>
+            <strong style={{ color: "#ca8a04", marginTop: "auto" }}>Mở danh sách ngữ pháp →</strong>
+          </Link>
+        </div>
+      </div>
+
+      {/* Trạm 2: Luyện phản xạ & Quiz */}
+      <div className="stack" style={{ gap: 12 }}>
+        <div className="eyebrow" style={{ color: "var(--green)", display: "flex", alignItems: "center", gap: 6 }}>
+          <span>⚡</span> TRẠM 2 · LUYỆN PHẢN XẠ & TRẮC NGHIỆM
+        </div>
+        <div className="grid grid-2">
+          <Link className="card-quest stack" href={`/flashcards?lesson=${lesson.id}`}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span className="tag" style={{ background: "var(--green-light)", color: "var(--green)", fontWeight: 700 }}>🎴 FLASHCARD SRS</span>
+              <span className="muted" style={{ fontSize: 13 }}>Lặp lại ngắt quãng</span>
+            </div>
+            <h2 className="section-title">Luyện Flashcard bài này</h2>
+            <p className="muted" style={{ margin: 0 }}>
+              Luyện ghi nhớ thẻ từ vựng với thuật toán FSRS. Tự gõ câu trả lời để kích hoạt trí nhớ chủ động.
+            </p>
+            <div style={{ marginTop: "auto" }}>
+              <span className="btn green" style={{ width: "fit-content" }}>Vào luyện Flashcard →</span>
+            </div>
+          </Link>
+
+          <Link className="card-quest stack" href={`/quiz?lesson=${lesson.id}`}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span className="tag" style={{ background: "var(--red-light)", color: "var(--red)", fontWeight: 700 }}>⚡ QUIZ TRẮC NGHIỆM</span>
+              <span className="muted" style={{ fontSize: 13 }}>{stat?.quizBestScore === null ? "Chưa làm" : `${stat?.quizBestScore}%`}</span>
+            </div>
+            <h2 className="section-title">Kiểm tra trắc nghiệm</h2>
+            <p className="muted" style={{ margin: 0 }}>
+              Bộ câu hỏi kiểm tra từ vựng, ngữ pháp và ngữ cảnh giao tiếp của bài học.
+            </p>
+            <div style={{ marginTop: "auto" }}>
+              <span className="btn" style={{ width: "fit-content" }}>Làm bài kiểm tra Quiz →</span>
+            </div>
+          </Link>
+        </div>
+      </div>
+
+      {/* Trạm 3: Đấu trường Mini Game */}
+      <div className="stack" style={{ gap: 12 }}>
+        <div className="eyebrow" style={{ color: "#9333ea", display: "flex", alignItems: "center", gap: 6 }}>
+          <span>🎮</span> TRẠM 3 · ĐẤU TRƯỜNG MINI GAME
+        </div>
+        <div className="grid grid-2">
+          <Link className="card-quest stack" href={`/games/sentence-builder?lesson=${lesson.id}`}>
+            <span className="tag" style={{ background: "#f3e8ff", color: "#9333ea", fontWeight: 700, width: "fit-content" }}>
+              🧩 SENTENCE BUILDER
+            </span>
+            <h2 className="section-title">Ghép câu tiếng Nhật</h2>
+            <p className="muted" style={{ margin: 0 }}>
+              Sắp xếp các mảnh ghép từ vựng thành câu hoàn chỉnh theo đúng ngữ pháp bài học.
+            </p>
+            <strong style={{ color: "#9333ea", marginTop: "auto" }}>Vào chơi ghép câu →</strong>
+          </Link>
+
+          <Link className="card-quest stack" href={`/games/particle-master?lesson=${lesson.id}`}>
+            <span className="tag" style={{ background: "#ffedd5", color: "#ea580c", fontWeight: 700, width: "fit-content" }}>
+              🎯 PARTICLE MASTER
+            </span>
+            <h2 className="section-title">Bậc thầy trợ từ</h2>
+            <p className="muted" style={{ margin: 0 }}>
+              Luyện chọn trợ từ chính xác (は, を, に, で, が...) cho từng ngữ cảnh cụ thể.
+            </p>
+            <strong style={{ color: "#ea580c", marginTop: "auto" }}>Vào luyện trợ từ →</strong>
+          </Link>
+        </div>
       </div>
     </div>
   );

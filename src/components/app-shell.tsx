@@ -46,12 +46,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </Link>
           ))}
         </nav>
-        <div className="card stack" style={{ marginTop: "auto", padding: 18 }}>
-          <div className="eyebrow">MỤC TIÊU HỌC</div>
-          <p className="muted" style={{ margin: 0, fontSize: 14 }}>
-            Xem thời gian học và thẻ đến hạn từ dữ liệu đã lưu.
+        <div className="card stack" style={{ marginTop: "auto", padding: 18, background: "var(--surface)", border: "2px solid #fed7cc" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 20 }}>🔥</span>
+            <strong style={{ fontSize: 14, color: "var(--red)" }}>CHINH PHỤC N5</strong>
+          </div>
+          <p className="muted" style={{ margin: 0, fontSize: 13, lineHeight: 1.5 }}>
+            Luyện tập 15 phút mỗi ngày để mở khóa phản xạ tiếng Nhật tự nhiên!
           </p>
-          <Link className="btn secondary" href="/dashboard" style={{ fontSize: 14 }}>Mở tổng quan</Link>
         </div>
       </aside>
 
@@ -72,8 +74,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             >
               {soundOn ? "🔊 Âm thanh" : "🔇 Tắt tiếng"}
             </button>
-            <Link className="tag" href="/settings">
-              {hasSupabaseConfig && signedIn ? "Đã đăng nhập" : "Bản demo"}
+            <Link className="tag" href="/settings" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <span>⚙️</span>
+              {hasSupabaseConfig && signedIn ? "Tài khoản" : "Cài đặt · Demo"}
             </Link>
           </div>
         </header>
