@@ -52,6 +52,18 @@ export function FlashcardSession() {
     }
   }, [step, index]);
 
+  const handlersRef = useRef<{
+    advance: () => void;
+    rate: (rating: Rating) => void;
+    reveal: () => void;
+    hide: () => void;
+  }>({
+    advance: () => {},
+    rate: () => {},
+    reveal: () => {},
+    hide: () => {},
+  });
+
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) {
@@ -61,22 +73,22 @@ export function FlashcardSession() {
         if (e.key === " ") e.preventDefault();
         if (step === "prompt") {
           e.preventDefault();
-          reveal();
+          handlersRef.current.reveal();
         } else if (step === "meaning") {
           e.preventDefault();
-          hide();
+          handlersRef.current.hide();
         } else if (step === "result") {
           e.preventDefault();
           if (correct && !retry && !graded.includes(current)) {
-            rate(Rating.Good);
+            handlersRef.current.rate(Rating.Good);
           } else {
-            advance();
+            handlersRef.current.advance();
           }
         }
       } else if (step === "result" && correct && !retry && !graded.includes(current)) {
-        if (e.key === "1") { e.preventDefault(); rate(Rating.Hard); }
-        else if (e.key === "2") { e.preventDefault(); rate(Rating.Good); }
-        else if (e.key === "3") { e.preventDefault(); rate(Rating.Easy); }
+        if (e.key === "1") { e.preventDefault(); handlersRef.current.rate(Rating.Hard); }
+        else if (e.key === "2") { e.preventDefault(); handlersRef.current.rate(Rating.Good); }
+        else if (e.key === "3") { e.preventDefault(); handlersRef.current.rate(Rating.Easy); }
       }
     }
     window.addEventListener("keydown", handleKeyDown);
@@ -150,6 +162,10 @@ export function FlashcardSession() {
     setRetry(retried.includes(queue[next]));
     setNote("");
   }
+
+  useEffect(() => {
+    handlersRef.current = { advance, rate, reveal, hide };
+  });
 
   function again() {
     if (!retry && !retried.includes(current)) {

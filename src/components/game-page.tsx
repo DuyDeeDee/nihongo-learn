@@ -48,6 +48,36 @@ function cleanRomaji(text: string): string {
   return text.replace(/\s*\([a-zA-Z\s]{2,}\)/g, "").trim();
 }
 
+function pseudoRandomPermutation(count: number, seedString: string): number[] {
+  const indices = Array.from({ length: count }, (_, i) => i);
+  if (count <= 1) return indices;
+
+  let seed = 0;
+  for (let i = 0; i < seedString.length; i++) {
+    seed = (seed * 31 + seedString.charCodeAt(i)) >>> 0;
+  }
+  if (seed === 0) seed = 123456789;
+
+  function nextRandom() {
+    seed |= 0;
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  }
+
+  const shuffled = [...indices];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(nextRandom() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+
+  if (shuffled.every((pos, i) => pos === i) && shuffled.length > 1) {
+    [shuffled[0], shuffled[1]] = [shuffled[1], shuffled[0]];
+  }
+  return shuffled;
+}
+
 function getPromptTranslation(prompt: string): string {
   const clean = prompt
     .replace(/^(Sắp xếp( các từ sau thành câu hoàn chỉnh)?:?|Tạo câu:?|Dịch câu:?|Hãy sắp xếp[^:]*:?)\s*/i, "")
@@ -391,20 +421,8 @@ function LessonGame({ kind, lesson, path, title }: { kind: Kind; lesson: (typeof
 
   const shuffledPositions = useMemo(() => {
     if (!current || kind !== "ordering") return [];
-    const indices = current.options.map((_, i) => i);
-    if (indices.length <= 1) return indices;
-
-    const shuffled = [...indices];
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
-
-    if (shuffled.every((pos, i) => pos === i) && shuffled.length > 1) {
-      [shuffled[0], shuffled[1]] = [shuffled[1], shuffled[0]];
-    }
-    return shuffled;
-  }, [current?.id, index, kind, attemptKey]);
+    return pseudoRandomPermutation(current.options.length, `${current.id}-${attemptKey}`);
+  }, [current, kind, attemptKey]);
 
   const cleanJapanesePrompt = current ? cleanRomaji(current.prompt) : "";
   const promptParenTranslation = current ? current.prompt.match(/\(([^)]*[a-zA-Zà-ỹÀ-Ỹ]{3,}[^)]*)\)/)?.[1]?.trim() : null;

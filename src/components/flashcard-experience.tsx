@@ -83,6 +83,20 @@ function LiveFlashcards({ lessonKey }: { lessonKey?: string }) {
     }
   }, [step, index]);
 
+  const handlersRef = useRef<{
+    advance: () => void;
+    rate: (rating: "hard" | "good" | "easy") => Promise<void>;
+    reveal: () => void;
+    hide: () => void;
+    resetCard: () => void;
+  }>({
+    advance: () => {},
+    rate: () => Promise.resolve(),
+    reveal: () => {},
+    hide: () => {},
+    resetCard: () => {},
+  });
+
   // Global keyboard shortcuts (Enter to reveal, hide, and advance smoothly)
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -94,20 +108,20 @@ function LiveFlashcards({ lessonKey }: { lessonKey?: string }) {
         if (e.key === " ") e.preventDefault();
         if (step === "prompt") {
           e.preventDefault();
-          reveal();
+          handlersRef.current.reveal();
         } else if (step === "meaning") {
           e.preventDefault();
-          hide();
+          handlersRef.current.hide();
         } else if (step === "result") {
           e.preventDefault();
           if (correct && saved && !busy) {
-            advance();
+            handlersRef.current.advance();
           } else if (correct && !curEntry?.retry && !saved && !busy) {
-            void rate("good");
+            void handlersRef.current.rate("good");
           } else if (!correct && !curEntry?.retry && saved) {
             setQueue(current => [...current, { card: curEntry.card, retry: true }]);
             setIndex(current => current + 1);
-            resetCard();
+            handlersRef.current.resetCard();
           } else if (!correct && curEntry?.retry) {
             setStep("recall");
             setAnswer("");
@@ -116,9 +130,9 @@ function LiveFlashcards({ lessonKey }: { lessonKey?: string }) {
           }
         }
       } else if (step === "result" && correct && !curEntry?.retry && !saved && !busy) {
-        if (e.key === "1") { e.preventDefault(); void rate("hard"); }
-        else if (e.key === "2") { e.preventDefault(); void rate("good"); }
-        else if (e.key === "3") { e.preventDefault(); void rate("easy"); }
+        if (e.key === "1") { e.preventDefault(); void handlersRef.current.rate("hard"); }
+        else if (e.key === "2") { e.preventDefault(); void handlersRef.current.rate("good"); }
+        else if (e.key === "3") { e.preventDefault(); void handlersRef.current.rate("easy"); }
       }
     }
     window.addEventListener("keydown", handleKeyDown);
@@ -285,6 +299,10 @@ function LiveFlashcards({ lessonKey }: { lessonKey?: string }) {
       setBusy(false);
     }
   }
+
+  useEffect(() => {
+    handlersRef.current = { advance, rate, reveal, hide, resetCard };
+  });
 
   const currentLesson = lessonKey ? lessons.find(l => l.id === lessonKey) : null;
   const entry = queue[index];
