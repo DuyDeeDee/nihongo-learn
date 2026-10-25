@@ -7,7 +7,7 @@ import { QuizPractice } from "@/components/practice";
 import { FuriganaText } from "@/components/furigana-text";
 import { ConfettiCanvas } from "@/components/confetti";
 import { playCorrectSound, playIncorrectSound, playVictorySound, setAudioFeedbackEnabled, useAudioFeedbackEnabled } from "@/lib/audio-feedback";
-import { isSpeechSupported, speakJapanese } from "@/lib/speech";
+import { isSpeechSupported, speakJapanese, extractJapaneseForSpeech } from "@/lib/speech";
 import { clientCache } from "@/lib/cache";
 import { lessons } from "@/lib/data";
 import type { QuizQuestion } from "@/lib/quiz-domain";
@@ -481,10 +481,18 @@ function LessonQuiz({ lesson }: { lesson: (typeof lessons)[number] }) {
             <section className={`card stack ${animClass}`}>
               <div className="eyebrow">CÂU {index + 1} / {session.questions.length}</div>
               {question && (() => {
+                const promptSpeechText = extractJapaneseForSpeech(question.prompt);
+                const hasPromptAudio = isSpeechSupported() && hasJapanese(promptSpeechText);
                 const translation = extractTranslation(question.prompt, feedback?.explanation ?? null);
                 const cleanExplanation = feedback?.explanation
                   ?.replace(/(?:🇻🇳\s*)?Dịch\s*(?:câu|nghĩa)?:\s*[^\n]+/i, "")
                   .trim();
+
+                const firstAnswer = feedback?.acceptedAnswers[0] ?? "";
+                const fullSentenceText = feedback && firstAnswer && /[_＿]{1,}|[（(][\s　_]*[)）]/.test(question.prompt)
+                  ? extractJapaneseForSpeech(question.prompt.replace(/[_＿]{1,}|[（(][\s　_]*[)）]/, ` ${firstAnswer} `))
+                  : "";
+                const hasFullSentenceAudio = isSpeechSupported() && hasJapanese(fullSentenceText);
 
                 return (
                   <>
@@ -492,16 +500,16 @@ function LessonQuiz({ lesson }: { lesson: (typeof lessons)[number] }) {
                       <h2 className="section-title" style={{ fontSize: "clamp(22px, 2.5vw, 28px)", lineHeight: 1.8, margin: 0, flex: 1 }}>
                         <FuriganaText text={question.prompt} enableTooltip />
                       </h2>
-                      {isSpeechSupported() && hasJapanese(question.prompt) && (
+                      {hasPromptAudio && (
                         <button
                           type="button"
                           className="btn secondary"
                           style={{ padding: "8px 14px", fontSize: 15, flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 6 }}
-                          onClick={() => speakJapanese(question.prompt)}
-                          title="Nghe phát âm câu hỏi"
-                          aria-label="Nghe phát âm câu hỏi"
+                          onClick={() => speakJapanese(promptSpeechText)}
+                          title="Nghe câu tiếng Nhật"
+                          aria-label="Nghe câu tiếng Nhật"
                         >
-                          🔊 Nghe
+                          🔊 Nghe câu
                         </button>
                       )}
                     </div>
@@ -572,17 +580,30 @@ function LessonQuiz({ lesson }: { lesson: (typeof lessons)[number] }) {
                           <strong style={{ color: feedback.correct ? "var(--green)" : "var(--red)", fontSize: 18 }}>
                             {feedback.correct ? "✓ Chính xác!" : "✗ Chưa đúng."}
                           </strong>
-                          {isSpeechSupported() && feedback.acceptedAnswers[0] && hasJapanese(feedback.acceptedAnswers[0]) && (
-                            <button
-                              type="button"
-                              className="tag"
-                              style={{ cursor: "pointer", border: "1px solid var(--border)", background: "var(--surface)", display: "inline-flex", alignItems: "center", gap: 4 }}
-                              onClick={() => speakJapanese(feedback.acceptedAnswers[0])}
-                              title="Nghe phát âm đáp án đúng"
-                            >
-                              🔊 Nghe đáp án
-                            </button>
-                          )}
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            {hasFullSentenceAudio && (
+                              <button
+                                type="button"
+                                className="tag"
+                                style={{ cursor: "pointer", border: "1px solid var(--border)", background: "var(--surface)", display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 12px", fontSize: 13 }}
+                                onClick={() => speakJapanese(fullSentenceText)}
+                                title="Nghe cả câu hoàn chỉnh có đáp án"
+                              >
+                                🔊 Nghe cả câu
+                              </button>
+                            )}
+                            {isSpeechSupported() && firstAnswer && hasJapanese(firstAnswer) && (
+                              <button
+                                type="button"
+                                className="tag"
+                                style={{ cursor: "pointer", border: "1px solid var(--border)", background: "var(--surface)", display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 12px", fontSize: 13 }}
+                                onClick={() => speakJapanese(firstAnswer)}
+                                title="Nghe phát âm đáp án đúng"
+                              >
+                                🔊 Nghe từ
+                              </button>
+                            )}
+                          </div>
                         </div>
 
                         <div style={{ fontSize: 16 }}>

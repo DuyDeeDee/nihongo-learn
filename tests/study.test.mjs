@@ -5,7 +5,7 @@ import {scheduleReview, Rating} from "../src/lib/srs.ts";
 import {studyDayKey, streakFromDays} from "../src/lib/progress.ts";
 import {gradeQuizAnswer} from "../src/lib/quiz-domain.ts";
 import {autoAnnotateFurigana} from "../src/lib/furigana-dictionary.ts";
-import {cleanJapaneseForSpeech} from "../src/lib/speech.ts";
+import {cleanJapaneseForSpeech, extractJapaneseForSpeech} from "../src/lib/speech.ts";
 
 test("Kana accepts hiragana and katakana, but not kanji", () => {
   assert.equal(checkAnswer("カタカナ", ["かたかな", "片仮名"], "kana"), true);
@@ -55,6 +55,29 @@ test("autoAnnotateFurigana annotates verb conjugations and leaves existing brack
 test("cleanJapaneseForSpeech strips bracket tokens for natural TTS", () => {
   assert.equal(cleanJapaneseForSpeech("[写真]{しゃしん}を [撮]{と}らないで ください。"), "写真を 撮らないで ください。");
   assert.equal(cleanJapaneseForSpeech("～[食]{た}べない"), "食べない");
+});
+
+test("extractJapaneseForSpeech isolates Japanese text and strips Vietnamese instructions", () => {
+  assert.equal(
+    extractJapaneseForSpeech("Chọn đáp án đúng điền vào chỗ trống: わたし _____ マイク・ミラーです。"),
+    "わたし マイク・ミラーです。"
+  );
+  assert.equal(
+    extractJapaneseForSpeech("「わたしは がくせい _____ ありません。」 Điền từ phủ định phù hợp vào chỗ trống:"),
+    "わたしは がくせい ありません。"
+  );
+  assert.equal(
+    extractJapaneseForSpeech("ミラーさんは IMC ___ 社員です。 (Anh/Chị Miller là nhân viên của IMC.)"),
+    "ミラーさんは 社員です。"
+  );
+  assert.equal(
+    extractJapaneseForSpeech("Chia thể ない của động từ nhóm 1 「吸います (hút)」:"),
+    "吸います"
+  );
+  assert.equal(
+    extractJapaneseForSpeech("Chọn mẫu câu 'Xin đừng làm mất hộ chiếu':"),
+    ""
+  );
 });
 
 test("Tilde and wave dash prefix/suffix normalization allows typing with or without ~", () => {

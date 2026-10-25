@@ -42,7 +42,7 @@ function alignWord(japanese: string, kana: string): string {
 }
 
 type SegmentToken = {
-  type: "ruby" | "plain" | "text";
+  type: "ruby" | "plain" | "text" | "blank";
   kanji?: string;
   reading?: string;
   okurigana?: string;
@@ -58,11 +58,13 @@ function segmentWithTooltips(annotated: string): SegmentToken[] {
 
   function pushPlainSegment(seg: string) {
     if (!seg) return;
-    const wordRegex = /([ぁ-んァ-ヶー]+|[a-zA-Z0-9]+|[^\s\wぁ-んァ-ヶー\u4e00-\u9faf]+|\s+)/g;
+    const wordRegex = /([_＿]{1,}|[（(][\s　_]*[)）]|[ぁ-んァ-ヶー]+|[a-zA-Z0-9]+|\s+|[^\sぁ-んァ-ヶー\u4e00-\u9faf_＿]+)/g;
     let m: RegExpExecArray | null;
     while ((m = wordRegex.exec(seg)) !== null) {
       const part = m[1];
-      if (/^[ぁ-んァ-ヶー]+$/.test(part)) {
+      if (/^[_＿]{1,}$|^[（(][\s　_]*[)）]$/.test(part)) {
+        tokens.push({ type: "blank", raw: part, lookup: null });
+      } else if (/^[ぁ-んァ-ヶー]+$/.test(part)) {
         let remaining = part;
         while (remaining.length > 0) {
           let matched = false;
@@ -168,9 +170,23 @@ export function FuriganaText({
       let lastIndex = 0;
       let match: RegExpExecArray | null;
 
+      function renderPlainWithBlanks(str: string, keyPrefix: string) {
+        const parts = str.split(/([_＿]{1,}|[（(][\s　_]*[)）])/g);
+        return parts.map((part, pIdx) => {
+          if (/^[_＿]{1,}$|^[（(][\s　_]*[)）]$/.test(part)) {
+            return (
+              <span key={`${keyPrefix}-b-${pIdx}`} className="quiz-blank-slot" aria-label="Chỗ trống cần điền">
+                （ &nbsp; &nbsp; &nbsp; ）
+              </span>
+            );
+          }
+          return part;
+        });
+      }
+
       while ((match = regex.exec(annotated)) !== null) {
         if (match.index > lastIndex) {
-          elements.push(annotated.slice(lastIndex, match.index));
+          elements.push(...renderPlainWithBlanks(annotated.slice(lastIndex, match.index), `p-${lastIndex}`));
         }
         const kanji = match[1];
         const reading = match[2];
@@ -192,7 +208,7 @@ export function FuriganaText({
       }
 
       if (lastIndex < annotated.length) {
-        elements.push(annotated.slice(lastIndex));
+        elements.push(...renderPlainWithBlanks(annotated.slice(lastIndex), `p-${lastIndex}`));
       }
 
       return elements;
@@ -201,6 +217,14 @@ export function FuriganaText({
     // Interactive tooltip segmentation
     const tokens = segmentWithTooltips(annotated);
     return tokens.map((token, idx) => {
+      if (token.type === "blank") {
+        return (
+          <span key={`b-${idx}`} className="quiz-blank-slot" aria-label="Chỗ trống cần điền">
+            （ &nbsp; &nbsp; &nbsp; ）
+          </span>
+        );
+      }
+
       let inner: React.ReactNode;
       let displayWord = "";
 
