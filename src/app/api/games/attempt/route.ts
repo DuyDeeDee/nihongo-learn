@@ -57,7 +57,11 @@ export async function POST(request: Request) {
         !sortedAnswer.every((value, index) => value === sortedOptions[index])) {
         return failure("Hãy dùng đủ các mảnh câu đúng một lần.", 400);
       }
-      correct = answer.every((token, index) => token === expected[index]);
+      const tokenMatch = answer.length === expected.length && answer.every((token, index) => token === expected[index]);
+      const normAnswer = answer.join("").replace(/[。、\s\.\,\?？\!！]/g, "").normalize("NFKC");
+      const normExpected = expected.join("").replace(/[。、\s\.\,\?？\!！]/g, "").normalize("NFKC");
+      const sentenceMatch = normAnswer === normExpected;
+      correct = tokenMatch || sentenceMatch;
     } else {
       if (typeof answer !== "string" || !options.includes(answer)) return failure("Trợ từ không hợp lệ.", 400);
       correct = expected.some(value => value.normalize("NFKC").trim() === answer.normalize("NFKC").trim());

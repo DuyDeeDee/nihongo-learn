@@ -233,8 +233,6 @@ export function FuriganaText({
           <span
             key={`w-${idx}`}
             className="furigana-tooltip-wrap"
-            tabIndex={0}
-            role="button"
             aria-label={`${displayWord} (${token.lookup.kana}): ${token.lookup.meaning}`}
           >
             {inner}

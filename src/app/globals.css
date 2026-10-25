@@ -171,12 +171,20 @@ input.jp, textarea.jp, .input.jp {
 }
 
 .furigana-tooltip-wrap:hover .furigana-tooltip-popup,
-.furigana-tooltip-wrap:focus .furigana-tooltip-popup,
-.furigana-tooltip-wrap:focus-within .furigana-tooltip-popup {
+.furigana-tooltip-wrap:focus-visible .furigana-tooltip-popup {
   opacity: 1;
   pointer-events: auto;
   visibility: visible;
   transform: translateX(-50%) translateY(0);
+}
+
+button:disabled .furigana-tooltip-popup,
+.btn:disabled .furigana-tooltip-popup,
+[disabled] .furigana-tooltip-popup {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 
 .furigana-tooltip-top {
