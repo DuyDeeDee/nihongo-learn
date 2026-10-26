@@ -398,7 +398,7 @@ export function LessonOverview({ lesson }: { lesson: Lesson }) {
         <div className="eyebrow" style={{ color: "var(--green)", display: "flex", alignItems: "center", gap: 6 }}>
           <span>⚡</span> TRẠM 2 · LUYỆN PHẢN XẠ & TRẮC NGHIỆM
         </div>
-        <div className="grid grid-2">
+        <div className="grid grid-3">
           <Link className="card-quest stack" href={`/flashcards?lesson=${lesson.id}`}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span className="tag" style={{ background: "var(--green-light)", color: "var(--green)", fontWeight: 700 }}>🎴 FLASHCARD SRS</span>
@@ -413,9 +413,23 @@ export function LessonOverview({ lesson }: { lesson: Lesson }) {
             </div>
           </Link>
 
+          <Link className="card-quest stack" href={`/vocab-quiz?lesson=${lesson.id}`}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span className="tag" style={{ background: "#fef3c7", color: "#b45309", fontWeight: 700 }}>🎯 QUIZ TỪ VỰNG</span>
+              <span className="muted" style={{ fontSize: 13 }}>2 chiều Nhật-Việt</span>
+            </div>
+            <h2 className="section-title">Trắc nghiệm từ vựng</h2>
+            <p className="muted" style={{ margin: 0 }}>
+              Kiểm tra nhanh từ vựng bài học 2 chiều: Nhật ➔ Việt và Việt ➔ Nhật kèm phát âm & Furigana.
+            </p>
+            <div style={{ marginTop: "auto" }}>
+              <span className="btn secondary" style={{ width: "fit-content" }}>Luyện Quiz từ vựng →</span>
+            </div>
+          </Link>
+
           <Link className="card-quest stack" href={`/quiz?lesson=${lesson.id}`}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span className="tag" style={{ background: "var(--red-light)", color: "var(--red)", fontWeight: 700 }}>⚡ QUIZ TRẮC NGHIỆM</span>
+              <span className="tag" style={{ background: "var(--red-light)", color: "var(--red)", fontWeight: 700 }}>⚡ QUIZ TỔNG HỢP</span>
               <span className="muted" style={{ fontSize: 13 }}>{stat?.quizBestScore === null ? "Chưa làm" : `${stat?.quizBestScore}%`}</span>
             </div>
             <h2 className="section-title">Kiểm tra trắc nghiệm</h2>

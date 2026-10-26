@@ -20,7 +20,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   if (slug[0] === "lessons" && slug[1]) {
     const lesson = lessons.find((entry) => entry.id === slug[1]);
     if (lesson) {
-      const section = slug[2] === "vocabulary" ? "Từ vựng" : slug[2] === "grammar" ? "Ngữ pháp" : "Bài học";
+      const section = slug[2] === "vocabulary" ? "Từ vựng" : slug[2] === "grammar" ? "Ngữ pháp" : slug[2] === "vocab-quiz" ? "Quiz Từ vựng" : "Bài học";
       title = `${section} · Bài ${lesson.number}`;
     }
   }

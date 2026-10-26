@@ -69,8 +69,15 @@ export function QuizPage({ lessonKey, demo = false }: { lessonKey?: string; demo
   if (!lesson) {
     return (
       <div className="stack">
-        <h1 className="page-title">Kiểm tra nhanh</h1>
-        <p className="muted">Chọn bài học để làm Quiz và kiểm tra từ vựng, ngữ pháp.</p>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+          <div>
+            <h1 className="page-title" style={{ margin: 0 }}>Kiểm tra nhanh</h1>
+            <p className="muted" style={{ margin: "4px 0 0" }}>Chọn bài học để làm Quiz và kiểm tra từ vựng, ngữ pháp.</p>
+          </div>
+          <Link className="btn" href="/vocab-quiz" style={{ background: "var(--red)", color: "#fff", textDecoration: "none" }}>
+            🎯 Mở Quiz Từ vựng (2 chiều) →
+          </Link>
+        </div>
         <div className="grid grid-3">
           {lessons.map(entry => (
             <Link className="card card-interactive stack" key={entry.id} href={`/quiz?lesson=${entry.id}`}>
@@ -441,7 +448,12 @@ function LessonQuiz({ lesson }: { lesson: (typeof lessons)[number] }) {
           <div className="eyebrow">VOLUME {lesson.volume} · BÀI {lesson.number}</div>
           <h1 className="page-title">Quiz cá nhân</h1>
         </div>
-        <Link className="btn secondary" href="/quiz">Chọn bài khác</Link>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <Link className="btn secondary" href={`/vocab-quiz?lesson=${lesson.id}`}>
+            🎯 Quiz từ vựng
+          </Link>
+          <Link className="btn secondary" href="/quiz">Chọn bài khác</Link>
+        </div>
       </div>
 
       {hasSupabaseConfig && !authReady && <p className="muted">Đang kiểm tra đăng nhập…</p>}

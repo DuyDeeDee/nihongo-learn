@@ -8,6 +8,7 @@ import {LessonDirectory, LessonOverview} from "@/components/lesson-pages";
 import {PreferencesPage} from "@/components/preferences-page";
 import {ProgressExperience} from "@/components/progress-experience";
 import {QuizPage} from "@/components/quiz-page";
+import {VocabQuizPage} from "@/components/vocab-quiz-page";
 import {VocabularyPage} from "@/components/vocabulary-page";
 import {lessons, routeNames} from "@/lib/data";
 
@@ -21,6 +22,7 @@ export function GenericPage({slug, studyLessonKey, studyDemo}: {
   if (path === "review/mistakes") return <ProgressExperience view="mistakes"/>;
   if (path === "progress") return <ProgressExperience view="progress"/>;
   if (path === "quiz") return <QuizPage lessonKey={studyLessonKey} demo={studyDemo}/>;
+  if (path === "vocab-quiz") return <VocabQuizPage lessonKey={studyLessonKey} demo={studyDemo}/>;
   if (path === "games/sentence-builder") {
     return <GamePage kind="ordering" lessonKey={studyLessonKey} demo={studyDemo}/>;
   }
@@ -36,6 +38,7 @@ export function GenericPage({slug, studyLessonKey, studyDemo}: {
     if (slug.length === 2) return <LessonOverview lesson={lesson}/>;
     if (slug.length === 3 && slug[2] === "vocabulary") return <VocabularyPage key={lesson.id} lesson={lesson}/>;
     if (slug.length === 3 && slug[2] === "grammar") return <GrammarPage key={lesson.id} lesson={lesson}/>;
+    if (slug.length === 3 && slug[2] === "vocab-quiz") return <VocabQuizPage lessonKey={lesson.id} demo={studyDemo}/>;
   }
 
   const title = routeNames[slug.at(-1) ?? ""] ?? "Nihongo Quest";

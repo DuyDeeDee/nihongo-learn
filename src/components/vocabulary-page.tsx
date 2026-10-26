@@ -265,9 +265,14 @@ export function VocabularyPage({ lesson }: { lesson: Lesson }) {
           <div className="eyebrow">EDITION 2 · VOLUME {lesson.volume} · BÀI {lesson.number}</div>
           <h1 className="page-title">Từ vựng</h1>
         </div>
-        {userId && loadedForUser === userId && lessonId && (
-          <button className="btn" type="button" disabled={busy} onClick={startAdd}>＋ Thêm từ</button>
-        )}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <Link className="btn secondary" href={`/vocab-quiz?lesson=${lesson.id}`} style={{ textDecoration: "none" }}>
+            🎯 Làm Quiz từ vựng
+          </Link>
+          {userId && loadedForUser === userId && lessonId && (
+            <button className="btn" type="button" disabled={busy} onClick={startAdd}>＋ Thêm từ</button>
+          )}
+        </div>
       </div>
 
       {!hasSupabaseConfig && (

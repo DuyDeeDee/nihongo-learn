@@ -6,6 +6,7 @@ import {studyDayKey, streakFromDays} from "../src/lib/progress.ts";
 import {gradeQuizAnswer} from "../src/lib/quiz-domain.ts";
 import {autoAnnotateFurigana} from "../src/lib/furigana-dictionary.ts";
 import {cleanJapaneseForSpeech, extractJapaneseForSpeech} from "../src/lib/speech.ts";
+import {generateVocabQuestions} from "../src/lib/vocab-quiz-domain.ts";
 
 test("Kana accepts hiragana and katakana, but not kanji", () => {
   assert.equal(checkAnswer("カタカナ", ["かたかな", "片仮名"], "kana"), true);
@@ -90,5 +91,38 @@ test("Tilde and wave dash prefix/suffix normalization allows typing with or with
   assert.equal(checkAnswer("人", ["～人", "～じん"], "kanji"), true);
   assert.equal(checkAnswer("こちらはさんです", ["こちらは ～さんです"], "flexible"), true);
 });
+
+test("generateVocabQuestions generates valid multiple choice questions for ja_to_vi and vi_to_ja", () => {
+  const sampleItems = [
+    { id: "1", japanese: "わたし", kana: "わたし", meaning: "tôi" },
+    { id: "2", japanese: "あなた", kana: "あなた", meaning: "bạn" },
+    { id: "3", japanese: "先生", kana: "せんせい", meaning: "thầy cô giáo" },
+    { id: "4", japanese: "学生", kana: "がくせい", meaning: "học sinh" },
+    { id: "5", japanese: "会社員", kana: "かいしゃいん", meaning: "nhân viên công ty" },
+  ];
+
+  const questions = generateVocabQuestions(sampleItems, 10, "mixed");
+  assert.equal(questions.length, 5); // clamped to items length
+  for (const q of questions) {
+    assert.ok(q.options.length >= 2);
+    assert.ok(q.options.includes(q.correctAnswer));
+    if (q.type === "ja_to_vi") {
+      assert.ok(sampleItems.some(it => it.japanese === q.promptDisplay));
+    } else {
+      assert.ok(sampleItems.some(it => it.meaning === q.promptDisplay));
+    }
+  }
+
+  // ja_to_vi direction
+  const jaQuestions = generateVocabQuestions(sampleItems, 3, "ja_to_vi");
+  assert.equal(jaQuestions.length, 3);
+  assert.ok(jaQuestions.every(q => q.type === "ja_to_vi"));
+
+  // vi_to_ja direction
+  const viQuestions = generateVocabQuestions(sampleItems, 3, "vi_to_ja");
+  assert.equal(viQuestions.length, 3);
+  assert.ok(viQuestions.every(q => q.type === "vi_to_ja"));
+});
+
 
 
